@@ -290,7 +290,7 @@ async def scrape_account(api: API, client: httpx.AsyncClient, handle: str) -> li
 async def scrape_search_term(api: API, client: httpx.AsyncClient, term: str) -> list[dict]:
     print(f"Searching X for {term!r}...")
     posts: list[dict] = []
-    query = f'"{term}" filter:media'
+    query = f'"{term}" filter:media min_faves:{MIN_LIKES}'
 
     async for tweet in api.search(query, limit=SEARCH_LIMIT):
         source_account = getattr(getattr(tweet, "user", None), "username", "") or "search"

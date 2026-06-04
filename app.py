@@ -790,6 +790,7 @@ INDICATOR_RANGES = {
 @st.cache_data(ttl="1h")
 def fetch_fred():
     _FRED_ERRORS.clear()
+    fred_api_key = get_api_key("FRED_API_KEY")
     pct_series = {"CPIAUCSL","CPILFESL","PCEPILFE","INDPRO","CES0500000003",
                   "RSXFS","DSPIC96","CSUSHPINSA","TOTALSL"}
     results = {}
@@ -860,11 +861,11 @@ def fetch_fred():
         return []
 
     def _fred_req(series_id, units="lin", limit=5, record_error=True):
-        if not FRED_API_KEY:
+        if not fred_api_key:
             return _fredgraph_req(series_id, units=units, limit=limit, record_error=record_error)
 
         url = (f"https://api.stlouisfed.org/fred/series/observations"
-               f"?series_id={series_id}&api_key={FRED_API_KEY}"
+               f"?series_id={series_id}&api_key={fred_api_key}"
                f"&file_type=json&sort_order=desc&limit={limit}&units={units}")
         last_error = None
         for attempt, timeout in enumerate((12, 20, 30), start=1):
@@ -935,7 +936,7 @@ def fetch_fred():
                 pass
         return sid, None
 
-    max_workers = 2 if FRED_API_KEY else 1
+    max_workers = 2 if fred_api_key else 1
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         for sid, res in ex.map(_get, FRED_SERIES.keys()):
             if res: results[sid] = res
@@ -1731,10 +1732,11 @@ def fetch_sofr_spread():
     """
     def _latest_fred_obs(series_id):
         try:
-            if FRED_API_KEY:
+            fred_api_key = get_api_key("FRED_API_KEY")
+            if fred_api_key:
                 url = (
                     "https://api.stlouisfed.org/fred/series/observations"
-                    f"?series_id={series_id}&api_key={FRED_API_KEY}"
+                    f"?series_id={series_id}&api_key={fred_api_key}"
                     "&file_type=json&sort_order=desc&limit=3&units=lin"
                 )
                 data = _http_get_json(url, timeout=10)
@@ -1993,8 +1995,9 @@ def fetch_cot_data():
         base = "https://publicreporting.cftc.gov/resource/6dca-aqww.json"
         base_headers = {"User-Agent": "macro-dashboard/1.0"}
         auth_headers = dict(base_headers)
-        if CFTC_APP_TOKEN:
-            auth_headers["X-App-Token"] = CFTC_APP_TOKEN
+        cftc_token = get_api_key("CFTC_APP_TOKEN")
+        if cftc_token:
+            auth_headers["X-App-Token"] = cftc_token
 
         for key, meta in markets.items():
             try:
@@ -2004,7 +2007,7 @@ def fetch_cot_data():
                 )
                 rows = None
                 if _USE_REQUESTS:
-                    for headers in (auth_headers, base_headers) if CFTC_APP_TOKEN else (base_headers,):
+                    for headers in (auth_headers, base_headers) if cftc_token else (base_headers,):
                         try:
                             r = _SESSION.get(url, timeout=15, headers=headers)
                             if r.status_code == 403 and headers.get("X-App-Token"):
@@ -2017,7 +2020,7 @@ def fetch_cot_data():
                                 continue
                             raise
                 else:
-                    for headers in (auth_headers, base_headers) if CFTC_APP_TOKEN else (base_headers,):
+                    for headers in (auth_headers, base_headers) if cftc_token else (base_headers,):
                         try:
                             req = urllib.request.Request(url, headers=headers)
                             with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as r:
@@ -3119,8 +3122,9 @@ def fetch_bls():
         current_year = datetime.date.today().year
         start_year = max(2019, current_year - 1)
         params = f"?startyear={start_year}&endyear={current_year}"
-        if BLS_API_KEY:
-            params += f"&registrationkey={BLS_API_KEY}"
+        bls_api_key = get_api_key("BLS_API_KEY")
+        if bls_api_key:
+            params += f"&registrationkey={bls_api_key}"
         url = base_url + params
         d = _http_get_json(url, timeout=12)
         for series in d.get("Results", {}).get("series", []):
@@ -3301,21 +3305,23 @@ def fetch_aaii():
 
 @st.cache_data(ttl="5m")
 def fetch_news():
-    try:
-        url = (f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT"
-               f"&topics=economy_macro&sort=LATEST&limit=6&apikey={ALPHA_VANTAGE_KEY}")
-        d = _http_get_json(url, timeout=12)
-        out = []
-        for it in d.get("feed",[])[:6]:
-            score = float(it.get("overall_sentiment_score",0))
-            out.append({"title":it.get("title",""),"url":it.get("url","#"),
-                        "source":it.get("source",""),"time":it.get("time_published","")[:8],
-                        "score":score,"sentiment":it.get("overall_sentiment_label","Neutral"),
-                        "color":"#34d399" if score>0.1 else "#f87171" if score<-0.1 else "#fbbf24"})
-        if out:
-            return out
-    except Exception:
-        pass
+    alpha_api_key = get_api_key("ALPHA_VANTAGE_KEY")
+    if alpha_api_key:
+        try:
+            url = (f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT"
+                   f"&topics=economy_macro&sort=LATEST&limit=6&apikey={alpha_api_key}")
+            d = _http_get_json(url, timeout=12)
+            out = []
+            for it in d.get("feed",[])[:6]:
+                score = float(it.get("overall_sentiment_score",0))
+                out.append({"title":it.get("title",""),"url":it.get("url","#"),
+                            "source":it.get("source",""),"time":it.get("time_published","")[:8],
+                            "score":score,"sentiment":it.get("overall_sentiment_label","Neutral"),
+                            "color":"#34d399" if score>0.1 else "#f87171" if score<-0.1 else "#fbbf24"})
+            if out:
+                return out
+        except Exception:
+            pass
 
     try:
         fallback = fetch_worldmonitor_news(
@@ -5050,8 +5056,8 @@ def render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, aaii, news, bl
             ("NAAIM", 1 if naaim else 0, naaim.get("date", "missing") if naaim else "missing"),
             ("CAPE", 1 if cape else 0, cape.get("quality", "missing") if cape else "missing"),
             ("AAII", 1 if aaii else 0, aaii.get("date", "missing") if aaii else "missing"),
-            ("BLS", 1 if bls else 0, "ok" if bls else "missing"),
-            ("Alpha Vantage", len(news), "api key set" if _has_key(ALPHA_VANTAGE_KEY) else "no api key"),
+            ("BLS", 1 if bls.get("nonfarm_payrolls") else 0, "ok" if bls.get("nonfarm_payrolls") else "missing"),
+            ("Alpha Vantage", len(news), "api key set" if api_key_is_set("ALPHA_VANTAGE_KEY") else "no api key"),
         ]
         diag_df = pd.DataFrame(provider_rows, columns=["Provider", "Records", "Notes"])
         st.dataframe(diag_df, use_container_width=True, hide_index=True)
@@ -11545,16 +11551,18 @@ def fetch_singlestock_vs_index_vol_spread():
 
         # VXVCLS — SPX 3-month index implied vol (FRED)
         vxvcls_s = None
-        try:
-            import fredapi
-            fred_client = fredapi.Fred(api_key=FRED_API_KEY)
-            vxvcls_raw  = fred_client.get_series(
-                "VXVCLS", observation_start=start.strftime("%Y-%m-%d")
-            ).dropna()
-            vxvcls_raw.index = pd.to_datetime(vxvcls_raw.index).normalize()
-            vxvcls_s = vxvcls_raw
-        except Exception:
-            pass
+        fred_api_key = get_api_key("FRED_API_KEY")
+        if fred_api_key:
+            try:
+                import fredapi
+                fred_client = fredapi.Fred(api_key=fred_api_key)
+                vxvcls_raw  = fred_client.get_series(
+                    "VXVCLS", observation_start=start.strftime("%Y-%m-%d")
+                ).dropna()
+                vxvcls_raw.index = pd.to_datetime(vxvcls_raw.index).normalize()
+                vxvcls_s = vxvcls_raw
+            except Exception:
+                pass
 
         # Fallback: estimate 3M vol as VIX × 1.05
         if vxvcls_s is None or vxvcls_s.empty:
@@ -14014,6 +14022,9 @@ def main():
         fg = fetch_fear_greed()
         naaim = fetch_naaim()
         cape = fetch_shiller_cape()
+        aaii = fetch_aaii()
+        news = fetch_news()
+        bls = fetch_bls()
         status.update(label="✅ Core dashboard ready", state="complete", expanded=False)
 
     futures_curve = pd.DataFrame()
@@ -14038,7 +14049,7 @@ def main():
                 break
 
 
-    render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, None, [], None)
+    render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, aaii, news, bls)
     render_methodology_callout()
     if has_systemic_data_failure(fred, treasury, mkt, fg, naaim, cape):
         st.error(

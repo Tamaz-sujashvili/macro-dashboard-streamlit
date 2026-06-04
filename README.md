@@ -1,5 +1,8 @@
 # Macro Dashboard
 
+**Repository:** [github.com/Tamaz-sujashvili/macro-dashboard-streamlit](https://github.com/Tamaz-sujashvili/macro-dashboard-streamlit)  
+**Live app:** [macro-dashboard-app.streamlit.app](https://macro-dashboard-app-7ju3ucvwbeihu75sjkeryf.streamlit.app/)
+
 Finance-oriented Streamlit dashboard for tracking macro regime, liquidity, market stress, options structure, institutional positioning, and energy futures in one place.
 
 The project is designed as a multi-factor macro model rather than a single-signal screener. It combines growth, inflation, rates, sentiment, positioning, volatility, and cross-asset market data to help readers form a top-down view of the current regime and the risks around it.
@@ -90,6 +93,8 @@ The default local URL is usually `http://localhost:8501`.
 ## Streamlit Deployment
 
 This repo is structured to deploy directly on Streamlit Community Cloud.
+
+**Live deployment:** [https://macro-dashboard-app-7ju3ucvwbeihu75sjkeryf.streamlit.app/](https://macro-dashboard-app-7ju3ucvwbeihu75sjkeryf.streamlit.app/)
 
 1. Push the repository to GitHub.
 2. In Streamlit Community Cloud, create a new app from the GitHub repo.

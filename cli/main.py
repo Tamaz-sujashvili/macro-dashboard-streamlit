@@ -34,10 +34,13 @@ def run(
     max_images: int = typer.Option(30, help="Maximum number of images to analyze this run."),
     skip_scrape: bool = typer.Option(False, help="Reuse the cached scraped posts file."),
     accounts: str | None = typer.Option(None, help="Comma-separated override for TARGET_ACCOUNTS."),
+    search_terms: str | None = typer.Option(None, help="Comma-separated X search terms override."),
 ) -> None:
     env = os.environ.copy()
     if accounts:
         env["X_TARGET_ACCOUNTS"] = accounts
+    if search_terms:
+        env["X_SEARCH_TERMS"] = search_terms
     env["MAX_IMAGES"] = str(max_images)
 
     root_dir = Path(__file__).resolve().parent.parent
