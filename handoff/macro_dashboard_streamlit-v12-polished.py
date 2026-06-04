@@ -8,8 +8,8 @@
 
 # ─── .streamlit/secrets.toml ──────────────────────────────────────────────────
 # [secrets]
-# FRED_API_KEY      = "5d01552f6006df1f53e2316df2c149b2"
-# ALPHA_VANTAGE_KEY = "9Z55XQPBSL8DZSBM"
+# FRED_API_KEY      = ""
+# ALPHA_VANTAGE_KEY = ""
 #
 # Obtain keys at:
 #   FRED: https://fred.stlouisfed.org/docs/api/api_key.html
@@ -485,15 +485,15 @@ def get_api_key(key_name: str) -> str:
     return ""
 
 # Default keys can be overridden by `.streamlit/secrets.toml` or env vars.
-FRED_API_KEY       = get_api_key("FRED_API_KEY") or "5d01552f6006df1f53e2316df2c149b2"
-ALPHA_VANTAGE_KEY  = get_api_key("ALPHA_VANTAGE_KEY") or "9Z55XQPBSL8DZSBM"
-BLS_API_KEY        = get_api_key("BLS_API_KEY") or "13bfde66bcc2464dad7132a6f57df306"
-EIA_API_KEY        = get_api_key("EIA_API_KEY") or "xBsQGPzttLAvhCtKAJZThK4YHJetxQC2Hvnf5Vcf"
-FMP_API_KEY        = get_api_key("FMP_API_KEY") or "hxIXLBfiqJgfbWgDIwLhwrKu4pH8UFL5"
-CFTC_APP_TOKEN     = get_api_key("CFTC_APP_TOKEN") or "2rrvhvwyfakbpy3buuxkrkat1"
-NASDAQ_API_KEY     = get_api_key("NASDAQ_API_KEY") or "TL9KS-wWUM2Uek92xncN"
-CONGRESS_GOV_API_KEY = get_api_key("CONGRESS_GOV_API_KEY") or "gkNA61vRNEO5hefEPHpN6wlinvQU6e1sHGpy3KKF"
-FINNHUB_API_KEY    = get_api_key("FINNHUBAPIKEY") or get_api_key("FINNHUB_API_KEY") or "d7h25u1r01qmqj476legd7h25u1r01qmqj476lf0"
+FRED_API_KEY = get_api_key("FRED_API_KEY")
+ALPHA_VANTAGE_KEY = get_api_key("ALPHA_VANTAGE_KEY")
+BLS_API_KEY = get_api_key("BLS_API_KEY")
+EIA_API_KEY = get_api_key("EIA_API_KEY")
+FMP_API_KEY = get_api_key("FMP_API_KEY")
+CFTC_APP_TOKEN = get_api_key("CFTC_APP_TOKEN")
+NASDAQ_API_KEY = get_api_key("NASDAQ_API_KEY")
+CONGRESS_GOV_API_KEY = get_api_key("CONGRESS_GOV_API_KEY")
+FINNHUB_API_KEY = get_api_key("FINNHUBAPIKEY") or get_api_key("FINNHUB_API_KEY")
 
 # ── HTTP HELPERS (requests preferred; urllib fallback with SSL fix) ────────────
 try:

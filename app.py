@@ -8,8 +8,8 @@
 
 # ─── .streamlit/secrets.toml ──────────────────────────────────────────────────
 # [secrets]
-# FRED_API_KEY      = "5d01552f6006df1f53e2316df2c149b2"
-# ALPHA_VANTAGE_KEY = "9Z55XQPBSL8DZSBM"
+# FRED_API_KEY      = ""
+# ALPHA_VANTAGE_KEY = ""
 #
 # Obtain keys at:
 #   FRED: https://fred.stlouisfed.org/docs/api/api_key.html
@@ -26,7 +26,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 """
 
-import os, json, time, datetime, threading, io, re, ssl, sys, subprocess, shutil
+import os, json, time, datetime, threading, io, re, ssl, sys, subprocess, shutil, html
 import urllib.request, urllib.error, urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -483,16 +483,82 @@ def get_api_key(key_name: str) -> str:
             return val
     return ""
 
-# Default keys can be overridden by `.streamlit/secrets.toml` or env vars.
-FRED_API_KEY       = get_api_key("FRED_API_KEY") or "5d01552f6006df1f53e2316df2c149b2"
-ALPHA_VANTAGE_KEY  = get_api_key("ALPHA_VANTAGE_KEY") or "9Z55XQPBSL8DZSBM"
-BLS_API_KEY        = get_api_key("BLS_API_KEY") or "13bfde66bcc2464dad7132a6f57df306"
-EIA_API_KEY        = get_api_key("EIA_API_KEY") or "xBsQGPzttLAvhCtKAJZThK4YHJetxQC2Hvnf5Vcf"
-FMP_API_KEY        = get_api_key("FMP_API_KEY") or "hxIXLBfiqJgfbWgDIwLhwrKu4pH8UFL5"
-CFTC_APP_TOKEN     = get_api_key("CFTC_APP_TOKEN") or "2rrvhvwyfakbpy3buuxkrkat1"
-NASDAQ_API_KEY     = get_api_key("NASDAQ_API_KEY") or "TL9KS-wWUM2Uek92xncN"
-CONGRESS_GOV_API_KEY = get_api_key("CONGRESS_GOV_API_KEY") or "gkNA61vRNEO5hefEPHpN6wlinvQU6e1sHGpy3KKF"
-FINNHUB_API_KEY    = get_api_key("FINNHUBAPIKEY") or get_api_key("FINNHUB_API_KEY") or "d7h25u1r01qmqj476legd7h25u1r01qmqj476lf0"
+def get_config_value(key_name: str, default: str = "") -> str:
+    """
+    Retrieve non-secret config from Streamlit secrets or environment variables.
+    Session-state overrides are intentionally not used here.
+    """
+    variants = (key_name, key_name.upper(), key_name.lower())
+    for variant in variants:
+        try:
+            if variant in st.secrets and st.secrets[variant] not in (None, ""):
+                return str(st.secrets[variant]).strip()
+        except Exception:
+            pass
+    for variant in variants:
+        value = os.environ.get(variant)
+        if value not in (None, ""):
+            return str(value).strip()
+    return default
+
+
+def get_bool_config(key_name: str, default: bool = False) -> bool:
+    raw = get_config_value(key_name, "")
+    if raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def api_key_is_set(*key_names: str) -> bool:
+    return any(bool(get_api_key(name)) for name in key_names)
+
+
+def _api_key_status_text(*key_names: str) -> str:
+    return "Loaded from secrets or runtime override" if api_key_is_set(*key_names) else "Not configured"
+
+
+def _codex_cli_path():
+    cli = shutil.which("codex")
+    if cli:
+        return cli
+    app_cli = "/Applications/Codex.app/Contents/Resources/codex"
+    if os.path.exists(app_cli):
+        return app_cli
+    return None
+
+
+def _local_ai_feature_enabled() -> bool:
+    return get_bool_config("ENABLE_LOCAL_AI_ANALYSIS", False) and _codex_cli_path() is not None
+
+
+def _x_intelligence_refresh_enabled() -> bool:
+    if not get_bool_config("ENABLE_X_INTELLIGENCE_REFRESH", False):
+        return False
+    root_dir = _x_intel_cli_root()
+    return root_dir is not None
+
+
+def _has_saved_ai_artifacts() -> bool:
+    return os.path.exists(_ai_snapshot_path()) or _latest_ai_analysis_path() is not None
+
+
+def _has_x_intelligence_cache() -> bool:
+    base_dir = Path.home() / ".macro_dashboard"
+    return any(
+        (base_dir / name).exists()
+        for name in ("x_intel_analyzed.json", "x_intel_posts.json")
+    )
+
+
+FRED_API_KEY = get_api_key("FRED_API_KEY")
+ALPHA_VANTAGE_KEY = get_api_key("ALPHA_VANTAGE_KEY")
+BLS_API_KEY = get_api_key("BLS_API_KEY")
+EIA_API_KEY = get_api_key("EIA_API_KEY")
+FMP_API_KEY = get_api_key("FMP_API_KEY")
+CFTC_APP_TOKEN = get_api_key("CFTC_APP_TOKEN")
+NASDAQ_API_KEY = get_api_key("NASDAQ_API_KEY")
+CONGRESS_GOV_API_KEY = get_api_key("CONGRESS_GOV_API_KEY")
+FINNHUB_API_KEY = get_api_key("FINNHUBAPIKEY") or get_api_key("FINNHUB_API_KEY")
 
 # ── HTTP HELPERS (requests preferred; urllib fallback with SSL fix) ────────────
 try:
@@ -508,8 +574,6 @@ try:
     _SSL_CTX = ssl.create_default_context(cafile=_certifi.where())
 except ImportError:
     _SSL_CTX = ssl.create_default_context()
-    _SSL_CTX.check_hostname = False
-    _SSL_CTX.verify_mode    = ssl.CERT_NONE
 
 def _http_get(url, timeout=12):
     if _USE_REQUESTS:
@@ -531,6 +595,15 @@ _FRED_ERRORS: dict = {}
 
 def _has_key(value) -> bool:
     return bool(str(value).strip()) if value is not None else False
+
+
+def _escape_html(value) -> str:
+    return html.escape(str(value or ""))
+
+
+def _safe_external_url(value) -> str:
+    url = str(value or "").strip()
+    return url if url.startswith(("https://", "http://")) else "#"
 
 # ── SERIES / TICKER CONFIG ───────────────────────────────────────────────────
 FRED_SERIES = {
@@ -1454,18 +1527,10 @@ def fetch_put_call_ratio_live():
                 if not _USE_REQUESTS:
                     return ""
                 try:
-                    from urllib3.exceptions import InsecureRequestWarning
-                    warnings.simplefilter("ignore", InsecureRequestWarning)
+                    warnings.simplefilter("default")
                 except Exception:
                     pass
-                r = _requests.get(
-                    url,
-                    timeout=timeout,
-                    headers={"User-Agent": "Mozilla/5.0"},
-                    verify=False,
-                )
-                r.raise_for_status()
-                return r.text
+                return ""
 
         def _normalize_pcr_table(df, label):
             df = df.copy()
@@ -3614,15 +3679,19 @@ def render_worldmonitor_news_section(worldmonitor_news):
                 continue
 
             for item in items:
+                safe_url = _safe_external_url(item.get("url", "#"))
+                safe_title = _escape_html(item.get("title", "Untitled headline"))
+                safe_source = _escape_html(item.get("source", "World Monitor"))
+                safe_time = _escape_html(item.get("time", "time unavailable"))
                 st.markdown(
                     f'<div style="background:#161b27;border-radius:10px;padding:14px 16px;'
                     f'margin-bottom:10px;border:1px solid #1e2d3d">'
-                    f'<a href="{item.get("url", "#")}" target="_blank" rel="noopener noreferrer" '
+                    f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" '
                     f'style="color:#e2e8f0;font-weight:600;text-decoration:none;font-size:14px">'
-                    f'{item.get("title", "Untitled headline")}</a><br>'
+                    f'{safe_title}</a><br>'
                     f'<span style="color:#64748b;font-size:11px">'
-                    f'{item.get("source", "World Monitor")}  ·  '
-                    f'{item.get("time", "time unavailable")}</span></div>',
+                    f'{safe_source}  ·  '
+                    f'{safe_time}</span></div>',
                     unsafe_allow_html=True,
                 )
 
@@ -4402,10 +4471,11 @@ def _hist_latest(fred, key):
     return values[-1] if values else None
 
 
-ENERGY_FUTURES_DEFAULT_PATH = "/Users/tazo/Desktop/futures-spreads-clm26-04-23-2026.csv"
+ENERGY_FUTURES_DEFAULT_PATH = str(
+    Path(__file__).resolve().parent / "data" / "futures-spreads-clm26-04-23-2026.csv"
+)
 ENERGY_FUTURES_DEFAULT_PATHS = [
     ENERGY_FUTURES_DEFAULT_PATH,
-    "/Users/tazo/Desktop/macro ouputs/futures-spreads-clm26-04-23-2026.csv",
 ]
 
 BARCHART_SYNTH_URL = (
@@ -5040,6 +5110,24 @@ def has_systemic_data_failure(fred, treasury, mkt, fg, naaim, cape):
     ]
     missing_count = sum(value is None for value in core_values)
     return missing_count >= 8
+
+
+def render_methodology_callout():
+    st.markdown(
+        """
+        <div style="background:#141923;border:1px solid #1f2a3a;border-radius:12px;padding:16px 18px;margin:8px 0 16px 0;">
+          <div style="color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:.08em;">What This Dashboard Does</div>
+          <div style="color:#e6edf3;font-size:15px;line-height:1.6;margin-top:10px;">
+            This dashboard is a <strong>multi-factor macro monitoring framework</strong>. It combines
+            <strong>growth</strong>, <strong>inflation</strong>, <strong>liquidity / financial conditions</strong>,
+            <strong>cross-asset market pricing</strong>, <strong>options positioning</strong>, and
+            <strong>institutional flow</strong> inputs to classify the current regime and highlight tactical risks.
+            Use the regime badges and KPI row as the summary view, then use each tab as a deeper factor sleeve.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ── PLOTLY CHART BUILDERS ─────────────────────────────────────────────────────
 
@@ -13054,18 +13142,6 @@ def _compose_codex_macro_prompt(snapshot_path, bundle_path):
         "- Keep the second part useful for a professional macro reader.\n"
         "- Return JSON only, matching the provided schema.\n"
     )
-
-
-def _codex_cli_path():
-    cli = shutil.which("codex")
-    if cli:
-        return cli
-    app_cli = "/Applications/Codex.app/Contents/Resources/codex"
-    if os.path.exists(app_cli):
-        return app_cli
-    return None
-
-
 def _run_codex_macro_analysis_subprocess(snapshot, snapshot_path):
     _ensure_ai_analysis_dir()
     timestamp = _safe_timestamp()
@@ -13087,7 +13163,6 @@ def _run_codex_macro_analysis_subprocess(snapshot, snapshot_path):
             "-m",
             AI_MACRO_ANALYSIS_MODEL,
             "--skip-git-repo-check",
-            "--dangerously-bypass-approvals-and-sandbox",
             "-C",
             os.path.dirname(os.path.abspath(__file__)),
             "--output-schema",
@@ -13367,8 +13442,9 @@ def _compose_ai_full_report(snapshot):
 def render_ai_macro_analysis():
     st.subheader("🤖 AI Macro Analysis")
     st.caption(
-        "Use the latest exported snapshot and run a local Codex CLI analyst pass. The generated output starts with plain English and then goes into a professional macro read."
+        "This is a local-only research workflow. In public deployments it stays read-only unless a local operator explicitly enables it and installs Codex CLI."
     )
+    ai_feature_enabled = _local_ai_feature_enabled()
 
     snapshot = st.session_state.get("ai_macro_snapshot")
     if snapshot is None:
@@ -13383,9 +13459,24 @@ def render_ai_macro_analysis():
 
     action_c1, action_c2 = st.columns([1.2, 4.8])
     with action_c1:
-        run_clicked = st.button("Run Codex Analysis", key="run_ai_macro_analysis", use_container_width=True)
+        run_clicked = st.button(
+            "Run Codex Analysis",
+            key="run_ai_macro_analysis",
+            use_container_width=True,
+            disabled=not ai_feature_enabled,
+            help=(
+                "Enable with ENABLE_LOCAL_AI_ANALYSIS=true and a local Codex CLI install."
+                if not ai_feature_enabled
+                else "Run a local Codex CLI pass on the latest saved snapshot."
+            ),
+        )
     with action_c2:
         st.caption("This uses the existing `dashboard_snapshot.json`. It does not rerun export.")
+
+    if not ai_feature_enabled:
+        st.info(
+            "Codex analysis execution is disabled in this deployment. Existing saved snapshots and prior analyses can still be viewed below."
+        )
 
     if run_clicked:
         if snapshot is None:
@@ -13466,9 +13557,9 @@ def render_ai_macro_analysis():
 def render_x_intelligence(x_data):
     st.subheader("🔎 X Intelligence — Leaked Macro Charts")
     st.caption(
-        "Sourced from specific X accounts sharing paid-service data. Run cli/main.py to refresh. "
-        "Charts analyzed by Codex CLI vision."
+        "This section can display cached local research, but scrape/analyze refresh is a local-only workflow and is disabled by default in public deployments."
     )
+    refresh_enabled = _x_intelligence_refresh_enabled()
     analyzed = x_data.get("analyzed", []) if isinstance(x_data, dict) else (x_data or [])
     posts = x_data.get("posts", []) if isinstance(x_data, dict) else []
     has_data = bool(analyzed or posts)
@@ -13541,9 +13632,24 @@ def render_x_intelligence(x_data):
         )
         run_cols = st.columns(2, gap="small")
         with run_cols[0]:
-            run_full = st.button("Run Scrape", key="x_intel_run_scrape", use_container_width=True)
+            run_full = st.button(
+                "Run Scrape",
+                key="x_intel_run_scrape",
+                use_container_width=True,
+                disabled=not refresh_enabled,
+            )
         with run_cols[1]:
-            run_analyze = st.button("Analyze Only", key="x_intel_run_analyze", use_container_width=True)
+            run_analyze = st.button(
+                "Analyze Only",
+                key="x_intel_run_analyze",
+                use_container_width=True,
+                disabled=not refresh_enabled,
+            )
+
+        if not refresh_enabled:
+            st.caption(
+                "Refresh is disabled here. Enable with `ENABLE_X_INTELLIGENCE_REFRESH=true` in a local environment that has the CLI and twscrape configured."
+            )
 
         if run_full or run_analyze:
             with st.spinner("Running X scrape/search pipeline…"):
@@ -13805,10 +13911,15 @@ def build_sidebar():
             "🤖 AI Macro Analysis",
             "X Intelligence",
         ]
+        default_sections = [section for section in all_sections if section not in {"🤖 AI Macro Analysis", "X Intelligence"}]
+        if _local_ai_feature_enabled() or _has_saved_ai_artifacts():
+            default_sections.append("🤖 AI Macro Analysis")
+        if _x_intelligence_refresh_enabled() or _has_x_intelligence_cache():
+            default_sections.append("X Intelligence")
         visible_sections = st.multiselect(
             "Show / hide tabs",
             options=all_sections,
-            default=all_sections,
+            default=default_sections,
             format_func=_display_tab_label,
         )
 
@@ -13816,16 +13927,27 @@ def build_sidebar():
 
         # API keys input panel
         with st.expander("🔐 API Keys"):
-            st.caption("Enter your API keys below. Leave blank to use secrets or environment variables.")
-            fred_inp   = st.text_input("FRED API Key", value=FRED_API_KEY or "", type="password")
-            alpha_inp  = st.text_input("Alpha Vantage Key", value=ALPHA_VANTAGE_KEY or "", type="password")
-            bls_inp    = st.text_input("BLS API Key", value=BLS_API_KEY or "", type="password")
-            eia_inp    = st.text_input("EIA API Key", value=EIA_API_KEY or "", type="password")
-            fmp_inp    = st.text_input("FMP API Key", value=FMP_API_KEY or "", type="password")
-            cftc_inp   = st.text_input("CFTC App Token", value=CFTC_APP_TOKEN or "", type="password")
-            nasdaq_inp = st.text_input("NASDAQ API Key", value=NASDAQ_API_KEY or "", type="password")
-            finnhub_inp = st.text_input("Finnhub API Key (13F data)", value=FINNHUB_API_KEY or "", type="password")
-            if st.button("Apply API Keys"):
+            st.caption("Leave fields blank to keep using secrets or environment variables. Secret values are never displayed back in the UI.")
+            st.caption(
+                " | ".join(
+                    [
+                        f"FRED: {_api_key_status_text('FRED_API_KEY')}",
+                        f"Alpha Vantage: {_api_key_status_text('ALPHA_VANTAGE_KEY')}",
+                        f"BLS: {_api_key_status_text('BLS_API_KEY')}",
+                        f"EIA: {_api_key_status_text('EIA_API_KEY')}",
+                    ]
+                )
+            )
+            fred_inp = st.text_input("FRED API Key", value="", type="password", placeholder="Override for this session only")
+            alpha_inp = st.text_input("Alpha Vantage Key", value="", type="password", placeholder="Override for this session only")
+            bls_inp = st.text_input("BLS API Key", value="", type="password", placeholder="Override for this session only")
+            eia_inp = st.text_input("EIA API Key", value="", type="password", placeholder="Override for this session only")
+            fmp_inp = st.text_input("FMP API Key", value="", type="password", placeholder="Override for this session only")
+            cftc_inp = st.text_input("CFTC App Token", value="", type="password", placeholder="Override for this session only")
+            nasdaq_inp = st.text_input("NASDAQ API Key", value="", type="password", placeholder="Override for this session only")
+            finnhub_inp = st.text_input("Finnhub API Key (13F data)", value="", type="password", placeholder="Override for this session only")
+            apply_col, reset_col = st.columns(2)
+            if apply_col.button("Apply API Keys"):
                 # Update session_state so get_api_key() picks up overrides
                 keys_map = {
                     "FRED_API_KEY": fred_inp.strip(),
@@ -13843,6 +13965,34 @@ def build_sidebar():
                 # Clear cached data and rerun to pick up new keys
                 st.cache_data.clear()
                 st.rerun()
+            if reset_col.button("Clear Overrides"):
+                for key in (
+                    "FRED_API_KEY",
+                    "ALPHA_VANTAGE_KEY",
+                    "BLS_API_KEY",
+                    "EIA_API_KEY",
+                    "FMP_API_KEY",
+                    "CFTC_APP_TOKEN",
+                    "NASDAQ_API_KEY",
+                    "FINNHUBAPIKEY",
+                    "FINNHUB_API_KEY",
+                ):
+                    st.session_state.pop(key, None)
+                st.cache_data.clear()
+                st.rerun()
+
+        with st.expander("🧪 Local-Only Features"):
+            st.caption("These workflows are intentionally disabled by default in public deployments.")
+            st.write(
+                f"AI Macro Analysis: {'Enabled' if _local_ai_feature_enabled() else 'Disabled'}"
+            )
+            st.write(
+                f"X Intelligence refresh: {'Enabled' if _x_intelligence_refresh_enabled() else 'Disabled'}"
+            )
+            st.caption(
+                "Enable them locally with `ENABLE_LOCAL_AI_ANALYSIS=true` and/or "
+                "`ENABLE_X_INTELLIGENCE_REFRESH=true`, plus the required local CLI tooling."
+            )
 
         if st.button("🔄 Force Refresh", use_container_width=True):
             st.cache_data.clear()
@@ -13889,6 +14039,7 @@ def main():
 
 
     render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, None, [], None)
+    render_methodology_callout()
     if has_systemic_data_failure(fred, treasury, mkt, fg, naaim, cape):
         st.error(
             "Most live feeds are currently unavailable. Check internet/DNS access first, then verify your API keys in the sidebar."
@@ -14614,16 +14765,21 @@ def main():
                 st.subheader("📰 Latest Macro News (Alpha Vantage)")
                 for item in news:
                     sentiment_color = item["color"]
+                    safe_url = _safe_external_url(item.get("url"))
+                    safe_title = _escape_html(item.get("title"))
+                    safe_source = _escape_html(item.get("source"))
+                    safe_time = _escape_html(item.get("time"))
+                    safe_sentiment = _escape_html(item.get("sentiment"))
                     st.markdown(
                         f'<div style="background:#161b27;border-radius:8px;padding:14px;'
                         f'margin-bottom:10px;border-left:3px solid {sentiment_color}">'
-                        f'<a href="{item["url"]}" target="_blank" rel="noopener noreferrer" style="color:#e2e8f0;'
+                        f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" style="color:#e2e8f0;'
                         f'font-weight:600;text-decoration:none;font-size:14px">'
-                        f'{item["title"]}</a><br>'
+                        f'{safe_title}</a><br>'
                         f'<span style="color:#64748b;font-size:11px">'
-                        f'{item["source"]}  ·  {item["time"]}  ·  </span>'
+                        f'{safe_source}  ·  {safe_time}  ·  </span>'
                         f'<span style="color:{sentiment_color};font-size:11px;font-weight:600">'
-                        f'{item["sentiment"]}</span></div>',
+                        f'{safe_sentiment}</span></div>',
                         unsafe_allow_html=True,
                     )
             else:
