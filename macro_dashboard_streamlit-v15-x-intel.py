@@ -2058,7 +2058,7 @@ def fetch_vrp_and_realized_vol(lookback_days: int = 252 * 2):
         ]
 
         if current_vrp > 25:
-            signal, signal_color = " Extreme Fear Premium", "#f87171"
+            signal, signal_color = "Extreme Fear Premium", "#f87171"
         elif current_vrp > 10:
             signal, signal_color = "Elevated Fear Premium", "#fbbf24"
         elif current_vrp > 0:
@@ -2066,7 +2066,7 @@ def fetch_vrp_and_realized_vol(lookback_days: int = 252 * 2):
         elif current_vrp > -5:
             signal, signal_color = "Slight Complacency", "#fbbf24"
         else:
-            signal, signal_color = " Complacency / RV Spike", "#f87171"
+            signal, signal_color = "Complacency / RV Spike", "#f87171"
 
         return {
             "vrp": current_vrp,
@@ -2144,7 +2144,7 @@ def compute_gs_panic_proxy(mkt, opts, skew_idx, pcr_hist):
         raw_score = round(avg_pct / 10, 2)
 
         if raw_score >= 9.0:
-            label, color = " Institutional Panic", "#f87171"
+            label, color = "Institutional Panic", "#f87171"
         elif raw_score >= 7.0:
             label, color = "Elevated Fear", "#fbbf24"
         elif raw_score >= 4.0:
@@ -2284,11 +2284,11 @@ def fetch_cta_momentum_model():
         elif cta_equity_score > 0.1:
             eq_label, eq_color = "CTA Slight Long", "#fbbf24"
         elif cta_equity_score > -0.1:
-            eq_label, eq_color = "⬜ CTA Neutral", "#94a3b8"
+            eq_label, eq_color = "CTA Neutral", "#94a3b8"
         elif cta_equity_score > -0.5:
             eq_label, eq_color = "CTA Slight Short", "#fbbf24"
         else:
-            eq_label, eq_color = " CTA Short Bias", "#f87171"
+            eq_label, eq_color = "CTA Short Bias", "#f87171"
 
         return {
             "assets": results,
@@ -3316,7 +3316,7 @@ def fetch_worldmonitor_news(per_category=8, category_keys=None):
 
 
 def render_worldmonitor_news_section(worldmonitor_news):
-    st.subheader(" World Monitor Headlines")
+    st.subheader("World Monitor Headlines")
     st.caption(
         "Using the World Monitor feed inventory from the attached "
         "`worldmonitor-main` source. If the public World Monitor digest is blocked, "
@@ -3658,7 +3658,7 @@ def _chart_caption_from_figure(fig):
         title_text = ""
     lookup = _plain_help_for_text(title_text)
     if lookup:
-        return f" What this means: {lookup}"
+        return f"What this means: {lookup}"
     return None
 
 
@@ -3920,10 +3920,10 @@ REGIME_COLORS = {
 }
 
 REGIME_LABELS = {
-    "Reflation": " Reflation",
-    "Stagflation": " Stagflation",
+    "Reflation": "Reflation",
+    "Stagflation": "Stagflation",
     "Goldilocks": "Goldilocks",
-    "Recession": " Recession",
+    "Recession": "Recession",
 }
 
 
@@ -4076,7 +4076,7 @@ def _regime(fred, mkt):
     regime = regime_state.get("regime")
     if regime in REGIME_LABELS:
         return REGIME_LABELS[regime], regime_state.get("color", "#fbbf24")
-    return " Mixed / Uncertain", "#fbbf24"
+    return "Mixed / Uncertain", "#fbbf24"
 
 def _get_val(fred, sid):
     return (fred.get(sid) or {}).get("value")
@@ -5341,7 +5341,7 @@ def make_phillips_curve_chart(fred, lookback_months=16):
         title=dict(text=f"Phillips Curve — Unemployment vs Inflation (last {len(df)} months)",
                    font_size=13),
         xaxis_title="Unemployment Rate (%)  ← tighter labor market | more slack →",
-        yaxis_title="CPI Inflation YoY (%)  ↑ hotter prices",
+        yaxis_title="CPI Inflation YoY (%) — higher = hotter prices",
         
         
         
@@ -6328,13 +6328,13 @@ def render_vix_term_structure_badge(term_data):
         vix_1y = float(term_data[-1]["iv"])
         spread = vix_1y - vix_9d
         if spread > 2:
-            text = " Contango — curve is normal, no near-term stress"
+            text = "Contango — curve is normal, no near-term stress"
             color = "#34d399"
         elif spread > -2:
             text = "️ Flat curve — monitor for inversion"
             color = "#fbbf24"
         else:
-            text = " Backwardation — near-term fear spike detected"
+            text = "Backwardation — near-term fear spike detected"
             color = "#f87171"
         st.markdown(
             f'<div style="background:#161b27;border:1px solid {color};border-radius:10px;'
@@ -6660,7 +6660,7 @@ def make_gex_chart(chain_data):
         for strike, meta in strike_map.items():
             fig.add_vline(x=strike, line_dash="dot", line_color=meta["color"], line_width=1.2, opacity=0.7, row=row, col=1)
 
-    regime = "Positive (Dampening)" if total_gex >= 0 else " Negative (Amplifying)"
+    regime = "Positive (Dampening)" if total_gex >= 0 else "Negative (Amplifying)"
     fig.update_layout(
         title=dict(text=f"Gamma Exposure (GEX) by Strike — Net: {regime}", font_size=12),
           
@@ -7705,7 +7705,7 @@ def make_dispersion_chart(mkt):
             regime_text = "️ High Dispersion + Low Correlation = Hidden Chaos"
             regime_color = "#f87171"
         elif d < 10 and k >= 60:
-            regime_text = " Low Dispersion + High Correlation = Macro Dominance"
+            regime_text = "Low Dispersion + High Correlation = Macro Dominance"
             regime_color = "#fbbf24"
         else:
             regime_text = "Mixed dispersion regime"
@@ -8025,7 +8025,7 @@ def make_cta_ma_table(cta_model):
         def ma_cell(above, ma_val):
             bg = "rgba(52,211,153,0.15)" if above else "rgba(248,113,113,0.15)"
             color = "#34d399" if above else "#f87171"
-            arrow = "▲" if above else "▼"
+            arrow = "+" if above else "-"
             return (
                 f'<td style="background:{bg};color:{color};'
                 f'text-align:center;padding:5px 10px;border-radius:4px;">'
@@ -8127,13 +8127,13 @@ def compute_institutional_participation_score(cot_data, ici_data, mmf_history, f
         composite = round(composite, 3)
 
         if composite > 1.5:
-            label, color = " Institutions Exiting", "#f87171"
+            label, color = "Institutions Exiting", "#f87171"
         elif composite > 0.5:
             label, color = "Cautious Positioning", "#fbbf24"
         elif composite > -0.5:
             label, color = "Neutral", "#34d399"
         else:
-            label, color = " Fully Invested", "#3b82f6"
+            label, color = "Fully Invested", "#3b82f6"
 
         return {
             "score": composite,
@@ -8149,7 +8149,8 @@ def compute_composite_liquidity_score(fred, mkt):
     """
     Composite Liquidity Score = weighted z-score of:
       NFCI (30%), TED Spread (20%), MOVE Index (20%), HY Spread (30%)
-    Score > +1.5 → Stress | 0 to 1.5 → Tightening | < 0 → Ample
+    Score > +1.5 → Stress | +0.5 to +1.5 → Tightening |
+    -0.5 to +0.5 → Neutral | < -0.5 → Ample
     Returns dict: score, label, color, components
     """
     try:
@@ -8205,13 +8206,13 @@ def compute_composite_liquidity_score(fred, mkt):
         score = round(sum(available_components[k] * weights[k] for k in available_components) / total_weight, 3)
 
         if score > 1.5:
-            label, color = " Stress", "#f87171"
+            label, color = "Stress", "#f87171"
         elif score > 0.5:
             label, color = "Tightening", "#fbbf24"
         elif score > -0.5:
             label, color = "Neutral", "#34d399"
         else:
-            label, color = " Ample", "#3b82f6"
+            label, color = "Ample", "#3b82f6"
 
         return {
             "score": score,
@@ -8978,7 +8979,7 @@ def render_premarket_futures_snapshot(mkt, premarket_data):
     premarket_data = premarket_data or {}
     cards = premarket_data.get("cards", {})
 
-    st.subheader(" Pre-Market & Futures Snapshot")
+    st.subheader("Pre-Market & Futures Snapshot")
     st.caption(
         "Pre-open macro tape. Replaced the ETF strip with the market cluster from your reference: "
         "E-mini S&P, DXY, Gold, Silver, Copper, WTI Crude, USD/JPY, ES/GC, GC/SI."
@@ -9471,7 +9472,7 @@ def render_options_derivatives(mkt, opts, skew_idx, vix_term, vix_v,
     st.divider()
 
     # ── Section A: VIX Term Structure + Gauges ────────────────────────────────
-    st.subheader(" VIX Volatility Surface")
+    st.subheader("VIX Volatility Surface")
     row1_c1, row1_c2 = st.columns([1.2, 1])
     with row1_c1:
         render_vix_term_structure_badge(vix_term)
@@ -9486,7 +9487,7 @@ def render_options_derivatives(mkt, opts, skew_idx, vix_term, vix_v,
     st.divider()
 
     # ── Section B: Options Chain — OI Wall + IV Smile ─────────────────────────
-    st.subheader(" Options Chain Analysis (SPY)")
+    st.subheader("Options Chain Analysis (SPY)")
     if spot:
         st.caption(f"SPY Spot: **{spot:.2f}** · Near-term expiry: **{expiry}** · Source: Yahoo Finance (yfinance, ~15 min delay)")
     else:
@@ -9547,7 +9548,7 @@ def render_options_derivatives(mkt, opts, skew_idx, vix_term, vix_v,
         st.divider()
 
         # ── Section C: GEX by Strike ──────────────────────────────────────────────
-        st.subheader(" Dealer Gamma Exposure (GEX)")
+        st.subheader("Dealer Gamma Exposure (GEX)")
         st.caption(
             "GEX is computed from Black-Scholes gamma × open interest. "
             "Negative GEX means dealer hedging amplifies moves; positive GEX usually dampens them."
@@ -9580,7 +9581,7 @@ def render_options_derivatives(mkt, opts, skew_idx, vix_term, vix_v,
 
         st.divider()
 
-        st.subheader(" Additional Structure Views")
+        st.subheader("Additional Structure Views")
         if simple_mode:
             st.caption(
                 "These charts answer three plain questions: is current vol only near-term or across expiries, "
@@ -10118,7 +10119,7 @@ def render_liquidity_conditions(fred, mkt, treasury, sofr_data, amihud_data,
     else:
         st.info("Composite score components unavailable — check data sources.")
 
-    with st.expander(" Liquidity Signal Guide"):
+    with st.expander("Liquidity Signal Guide"):
         st.markdown("""
 | Indicator | Ample | Watch | Stress |
 |---|---|---|---|
@@ -10706,7 +10707,7 @@ def render_institutional_flows(fred, cot_data, ici_data, mmf_history, inst13f,
         else:
             st.info("MA table unavailable — model still loading.")
 
-    with st.expander(" Institutional Flow Signal Guide"):
+    with st.expander("Institutional Flow Signal Guide"):
         st.markdown("""
 | Indicator | Bullish (Liquid) | Neutral | Bearish (Illiquid) |
 |---|---|---|---|
@@ -11258,7 +11259,7 @@ def render_sentiment_framework(mkt, opts, skew_idx, fg, aaii, vix_term,
 
     if composite_fear is not None:
         if composite_fear >= 7.5:
-            cf_label, cf_color = " Extreme Fear", "#f87171"
+            cf_label, cf_color = "Extreme Fear", "#f87171"
         elif composite_fear >= 5.5:
             cf_label, cf_color = "Elevated Fear", "#fbbf24"
         elif composite_fear >= 3.5:
@@ -11309,7 +11310,7 @@ def render_sentiment_framework(mkt, opts, skew_idx, fg, aaii, vix_term,
         f'<div style="background:#161b27;border-radius:8px;padding:12px 14px;border:1px solid #1e2d3d">'
         f'<div style="color:#94a3b8;font-size:11px;text-transform:uppercase">1 · VIX</div>'
         f'<div style="color:{vix_c};font-size:22px;font-weight:700">{vix_val:.1f}</div>'
-        f'<div style="color:#94a3b8;font-size:11px">{"️ Backwardation" if (opts or {}).get("backwardation") else " Contango"}</div>'
+        f'<div style="color:#94a3b8;font-size:11px">{"Backwardation" if (opts or {}).get("backwardation") else "Contango"}</div>'
         f'</div>' if vix_val is not None else
         f'<div style="background:#161b27;border-radius:8px;padding:12px 14px;border:1px solid #1e2d3d">'
         f'<div style="color:#94a3b8;font-size:11px">1 · VIX</div><div style="color:#94a3b8">N/A</div></div>',
@@ -11371,7 +11372,7 @@ def render_sentiment_framework(mkt, opts, skew_idx, fg, aaii, vix_term,
         f'<div style="background:#161b27;border-radius:8px;padding:12px 14px;border:1px solid #1e2d3d">'
         f'<div style="color:#94a3b8;font-size:11px;text-transform:uppercase">7 · MOVE Index</div>'
         f'<div style="color:{move_c};font-size:22px;font-weight:700">{move_val:.1f}</div>'
-        f'<div style="color:#94a3b8;font-size:11px">{" Bond vol elevated" if (move_val or 0) > 130 else "Moderately elevated" if (move_val or 0) > 100 else "Normal bond vol"}</div>'
+        f'<div style="color:#94a3b8;font-size:11px">{"Bond vol elevated" if (move_val or 0) > 130 else "Moderately elevated" if (move_val or 0) > 100 else "Normal bond vol"}</div>'
         f'</div>' if move_val is not None else
         f'<div style="background:#161b27;border-radius:8px;padding:12px 14px;border:1px solid #1e2d3d">'
         f'<div style="color:#94a3b8;font-size:11px">7 · MOVE Index</div><div style="color:#94a3b8">N/A</div></div>',
@@ -11518,7 +11519,7 @@ def render_sentiment_framework(mkt, opts, skew_idx, fg, aaii, vix_term,
                 f'<div style="color:#94a3b8;font-size:12px;text-transform:uppercase">MOVE Index — Bond Market Volatility</div>'
                 f'<div style="color:{move_c2};font-size:42px;font-weight:700;margin:8px 0">{move_v:.1f}</div>'
                 f'<div style="color:#94a3b8;font-size:13px">Change: {move_chg_str} · '
-                f'{" Elevated — bond vol suppressing equity recovery" if move_v > 130 else "Moderately elevated — watch oil/CPI" if move_v > 100 else "Normal bond vol — supportive"}</div>'
+                f'{"Elevated — bond vol suppressing equity recovery" if move_v > 130 else "Moderately elevated — watch oil/CPI" if move_v > 100 else "Normal bond vol — supportive"}</div>'
                 f'<div style="color:#94a3b8;font-size:11px;margin-top:8px">Normal range: 60–100. Above 130 = significant headwind for equities.</div>'
                 f'</div>',
                 unsafe_allow_html=True)
@@ -11529,7 +11530,7 @@ def render_sentiment_framework(mkt, opts, skew_idx, fg, aaii, vix_term,
     ss_vol_data = fetch_singlestock_vs_index_vol_spread()
     render_singlestock_vs_index_vol(ss_vol_data)
 
-    with st.expander(" Sentiment Framework Signal Guide (FIN404043)"):
+    with st.expander("Sentiment Framework Signal Guide (FIN404043)"):
         st.markdown("""
 | # | Indicator | Bearish / Fear | Neutral | Bullish / Greed |
 |---|---|---|---|---|
@@ -12389,10 +12390,10 @@ def _build_ai_analysis_sections(snapshot):
     ]
 
     return [
-        {"key": "macro_regime", "title": " Section 1: Macro Regime Classification", "cards": macro_cards},
+        {"key": "macro_regime", "title": "Section 1: Macro Regime Classification", "cards": macro_cards},
         {
             "key": "liquidity",
-            "title": " Section 2: Financial Conditions & Liquidity",
+            "title": "Section 2: Financial Conditions & Liquidity",
             "cards": liquidity_cards,
             "data": {
                 "sofr_futures_strip": data.get("sofr_futures_strip") or [],
@@ -12402,8 +12403,8 @@ def _build_ai_analysis_sections(snapshot):
                 "sofr_90d_avg": data.get("sofr_90d_avg"),
             },
         },
-        {"key": "options", "title": " Section 3: Options Market Structure & Dealer Positioning", "cards": options_cards},
-        {"key": "institutional", "title": " Section 4: Institutional Flow Analysis", "cards": inst_cards},
+        {"key": "options", "title": "Section 3: Options Market Structure & Dealer Positioning", "cards": options_cards},
+        {"key": "institutional", "title": "Section 4: Institutional Flow Analysis", "cards": inst_cards},
         {"key": "risk", "title": "️  Section 5: Risk Outlook & Tactical Assessment", "cards": risk_cards},
     ]
 
@@ -12483,7 +12484,7 @@ def render_ai_macro_analysis():
             else:
                 analysis_record = _save_ai_analysis_record(snapshot, cli_result["parsed"], cli_result)
                 st.session_state["ai_macro_generated_analysis"] = analysis_record
-                status.update(label=" Codex analysis complete", state="complete", expanded=False)
+                status.update(label="Codex analysis complete", state="complete", expanded=False)
 
     snapshot = st.session_state.get("ai_macro_snapshot")
     analysis_record = st.session_state.get("ai_macro_generated_analysis") or _read_latest_ai_analysis()
@@ -12509,7 +12510,7 @@ def render_ai_macro_analysis():
     else:
         st.info("No generated macro analysis found yet. Click `Run Codex Analysis` to create one from the latest snapshot.")
 
-    with st.expander(" Live Data Snapshot", expanded=False):
+    with st.expander("Live Data Snapshot", expanded=False):
         st.json(snapshot)
 
     with st.expander("Supporting Live Inputs Used By The Analyst", expanded=False):
@@ -12529,7 +12530,7 @@ def render_ai_macro_analysis():
 
 
 def render_x_intelligence(x_data):
-    st.subheader(" X Intelligence — Leaked Macro Charts")
+    st.subheader("X Intelligence — Leaked Macro Charts")
     st.caption(
         "Sourced from specific X accounts sharing paid-service data. Run cli/main.py to refresh. "
         "Charts analyzed by Codex CLI vision."
@@ -12965,7 +12966,7 @@ def main():
 
             col1, col2 = st.columns([1.1, 1])
             with col1:
-                st.subheader(" Growth Indicators")
+                st.subheader("Growth Indicators")
                 growth_data = {
                     "Indicator": ["Industrial Production",
                                    "Weekly Economic Index","US Leading Index"],
@@ -12983,14 +12984,14 @@ def main():
                         f'<span style="color:{c};font-weight:600;font-size:13px">{val_str}</span></div>',
                         unsafe_allow_html=True)
 
-                st.subheader(" Inflation")
+                st.subheader("Inflation")
                 st.plotly_chart(
                     make_inflation_bar_chart(fred),
                     use_container_width=True,
                     key="chart_inflation_bar")
 
             with col2:
-                st.subheader(" Yield Curve")
+                st.subheader("Yield Curve")
                 st.plotly_chart(
                     make_yield_curve_chart(treasury),
                     use_container_width=True,
@@ -13016,7 +13017,7 @@ def main():
 
             lc1, lc2 = st.columns(2)
             with lc1:
-                st.subheader(" Labor Market")
+                st.subheader("Labor Market")
                 labor_items = [
                     ("U6RATE","U-6 Underemployment","%"),
                     ("CIVPART","Labor Participation","%"),
@@ -13045,7 +13046,7 @@ def main():
                         unsafe_allow_html=True)
 
             with lc2:
-                st.subheader(" Consumer & Spending")
+                st.subheader("Consumer & Spending")
                 consumer_items = [
                     ("UMCSENT","University of Michigan Consumer Sentiment Index","idx"),
                     ("RSXFS","Retail Sales (ex-Auto)","$B"),
@@ -13062,7 +13063,7 @@ def main():
                         f'<span style="color:#94a3b8;font-size:13px">{label}</span>'
                         f'<span style="color:{c};font-weight:600">{_fmt(v,unit)}</span></div>',
                         unsafe_allow_html=True)
-                st.subheader(" PCE & Retail (KPIs)")
+                st.subheader("PCE & Retail (KPIs)")
                 kc1, kc2 = st.columns(2)
                 pce_v  = _get_val(fred, "PCEPILFE")
                 ret_v  = _get_val(fred, "RSXFS")
@@ -13199,7 +13200,7 @@ def main():
                     """
                 )
 
-            st.subheader(" FX & Commodities")
+            st.subheader("FX & Commodities")
             fx_items = [
                 ("DX-Y.NYB","Dollar Index (DXY)"),
                 ("EURUSD=X","EUR/USD"),
@@ -13298,7 +13299,7 @@ def main():
 
             hc1, hc2 = st.columns(2)
             with hc1:
-                st.subheader(" Housing Market")
+                st.subheader("Housing Market")
                 housing_items = [
                     ("HOUST","Housing Starts","k"),
                     ("PERMIT","Building Permits","k"),
@@ -13321,7 +13322,7 @@ def main():
                     st.metric("30yr vs 15yr Spread", f"{mtg_spread:.0f} bp")
 
             with hc2:
-                st.subheader(" Credit Markets")
+                st.subheader("Credit Markets")
                 st.plotly_chart(
                     make_credit_spreads_chart(fred),
                     use_container_width=True,
@@ -13343,7 +13344,7 @@ def main():
                         f'<span style="color:{c};font-weight:600">{_fmt(v,unit)}</span></div>',
                         unsafe_allow_html=True)
 
-                st.subheader(" Global Central Banks")
+                st.subheader("Global Central Banks")
                 cb_items = [
                     ("DFF","US Fed Funds Rate","%"),
                     ("ECBDFR","ECB Deposit Rate","%"),
@@ -13354,14 +13355,14 @@ def main():
                 for i, (sid, label, unit) in enumerate(cb_items):
                     v = _get_val(fred, sid)
                     with cb_cols[i]:
-                        st.metric(label.replace(" Rate",""), f"{v:.2f}%" if v else "N/A")
+                        st.metric(label.replace(" " + "Rate", ""), f"{v:.2f}%" if v else "N/A")
 
     # ── TAB 7: PHILLIPS CURVE ──────────────────────────────────────────────
     if "PHILLIPS CURVE" in tab_map:
         with tab_map["PHILLIPS CURVE"]:
             _render_section_refresh("phillips_curve", [fetch_fred])
             render_tab_summary("PHILLIPS CURVE", fred, treasury=treasury, mkt=mkt, fg=fg, naaim=naaim, cape=cape)
-            st.subheader(" Phillips Curve — Unemployment vs Inflation")
+            st.subheader("Phillips Curve — Unemployment vs Inflation")
             st.markdown(
                 """
                 The **Phillips Curve** illustrates the classic macroeconomic trade-off between unemployment
@@ -13403,7 +13404,7 @@ def main():
                     )
                 else:
                     st.info(
-                        f" Unemployment: **{un_curr:.1f}%** — CPI Inflation: **{cpi_curr:.1f}%**. "
+                        f"Unemployment: **{un_curr:.1f}%** — CPI Inflation: **{cpi_curr:.1f}%. "
                         f"Monitor for directional shifts in coming months."
                     )
 
@@ -13431,7 +13432,7 @@ def main():
             st.divider()
 
             if news:
-                st.subheader(" Latest Macro News (Alpha Vantage)")
+                st.subheader("Latest Macro News (Alpha Vantage)")
                 for item in news:
                     sentiment_color = item["color"]
                     st.markdown(
@@ -13449,7 +13450,7 @@ def main():
                 st.info("No news data available. Check your Alpha Vantage API key in `.streamlit/secrets.toml`.")
 
             st.divider()
-            st.subheader(" Signal Summary")
+            st.subheader("Signal Summary")
             sig_cols = st.columns(3)
             with sig_cols[0]:
                 st.markdown("**Growth Signals**")
@@ -13621,7 +13622,7 @@ def main():
                 panic_data=report_panic_data,
                 cta_model=report_cta_model,
                 sg_cta=report_sg_cta)
-            status.update(label=" Offline dashboard HTML ready", state="complete", expanded=False)
+            status.update(label="Offline dashboard HTML ready", state="complete", expanded=False)
     prepared_html_report = st.session_state.get("prepared_html_report")
     if prepared_html_report:
         st.download_button(

@@ -55,7 +55,7 @@ def kpi_tile(label: str, value: str, delta: str | None = None, delta_color: str 
     delta_html = ""
     if delta:
         # Replace any unicode arrows with +/- prefixes if not already signed.
-        clean_delta = delta.replace("▲", "+").replace("▼", "-").replace("↑", "+").replace("↓", "-")
+        clean_delta = delta.replace("\u25b2", "+").replace("\u25bc", "-").replace("\u2191", "+").replace("\u2193", "-")
         if not clean_delta.startswith(("+", "-")) and any(c.isdigit() for c in clean_delta):
             clean_delta = "+" + clean_delta
         delta_html = (

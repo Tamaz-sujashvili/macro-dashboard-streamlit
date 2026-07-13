@@ -268,6 +268,7 @@ def test_liquidity_loose():
     sig = liquidity_regime_detector(fred)
     assert "Loose" in sig.state
     assert sig.risk_score > 0.3
+    assert sig.timeframe == "W"
 
 
 def test_liquidity_stressed():
@@ -285,6 +286,7 @@ def test_liquidity_stressed():
 def test_liquidity_missing_data():
     sig = liquidity_regime_detector({})
     assert sig.state == "No Data"
+    assert sig.timeframe == "W"
 
 
 # ---------------------------------------------------------------------------

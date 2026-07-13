@@ -95,11 +95,11 @@ v16 introduces a single authoritative **Regime Monitor** tab, a reusable `module
 ## Verification
 
 - `streamlit run macro_dashboard_streamlit-v15-x-intel.py` starts with zero tracebacks.
-- `python3 -m pytest tests/ -q` — 28 passed.
+- `python3 -m pytest tests/ -q` — 32 passed.
 - No hardcoded API keys found in tracked files.
 - Playwright screenshot review confirms:
   - Regime Monitor is the first tab and renders the consensus scoreboard (Daily Risk-On, Weekly Neutral, Monthly Risk-On), detector matrix, detector detail expanders, 3-year timeline heatmap, and data-freshness footer.
-  - All 18 tabs switch without raising exceptions, including the previously crashing Sentiment Framework tab.
+  - All 19 tabs switch without raising exceptions, including CALENDAR and the previously crashing Sentiment Framework tab.
 
 ## v17 — Terminal redesign final pass
 
@@ -114,5 +114,5 @@ v16 introduces a single authoritative **Regime Monitor** tab, a reusable `module
 - **QA / verification**
   - Added `archive/qa/v17_tab_check.py` to screenshot every tab at 1600×900 and check page styles, fonts, and emoji counts.
   - Grep for emoji unicode ranges outside `archive/` returned **0 matches** after cleaning `app.py` and remaining markdown docs.
-  - Playwright final pass: all 18 tabs PASS with dark `#0a0e14` background, `#11161f` panels, cyan accent, JetBrains Mono numerals, uppercase terminal tab nav, no default Streamlit red/orange chrome, and no white chart backgrounds.
-  - `pytest tests/ -q` → **28 passed**.
+  - Playwright final pass: all 19 tabs PASS with dark `#0a0e14` background, `#11161f` panels, cyan accent, JetBrains Mono numerals, uppercase terminal tab nav, no default Streamlit red/orange chrome, and no white chart backgrounds. CALENDAR and the Regime Monitor BREADTH panel passed QA.
+  - `pytest tests/ -q` → **32 passed**.

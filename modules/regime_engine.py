@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
@@ -267,7 +268,7 @@ def trend_vol_detector(
 # ---------------------------------------------------------------------------
 
 _HMM_CACHE: Dict[str, Dict[str, Any]] = {}
-_HMM_CACHE_DIR = ".cache"
+_HMM_CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 
 
 def _hmm_cache_key(n_states: int, train_days: int, refit_days: int, seed: int) -> str:
@@ -600,7 +601,7 @@ def _fred_roc(fred: Mapping[str, Any], hist_key: str, periods_back: int = 3) -> 
 def liquidity_regime_detector(fred: Mapping[str, Any]) -> RegimeSignal:
     """Liquidity regime from NFCI and high-yield OAS level + ROC."""
     if not fred:
-        return _no_data_signal("Liquidity", "D")
+        return _no_data_signal("Liquidity", "W")
 
     try:
         nfci = _fred_current(fred, "NFCI")
@@ -609,7 +610,7 @@ def liquidity_regime_detector(fred: Mapping[str, Any]) -> RegimeSignal:
         hy_roc = _fred_roc(fred, "HY_SPREAD_HIST", periods_back=3)
 
         if nfci is None and hy is None:
-            return _no_data_signal("Liquidity", "D")
+            return _no_data_signal("Liquidity", "W")
 
         state, score = _classify_liquidity_state(nfci, hy, nfci_roc, hy_roc)
         inputs = sum(x is not None for x in (nfci, hy, nfci_roc, hy_roc))
@@ -617,7 +618,7 @@ def liquidity_regime_detector(fred: Mapping[str, Any]) -> RegimeSignal:
 
         return RegimeSignal(
             detector_name="Liquidity",
-            timeframe="D",
+            timeframe="W",
             state=state,
             risk_score=score,
             confidence=confidence,
@@ -625,7 +626,7 @@ def liquidity_regime_detector(fred: Mapping[str, Any]) -> RegimeSignal:
             as_of=datetime.date.today(),
         )
     except Exception:
-        return _no_data_signal("Liquidity", "D")
+        return _no_data_signal("Liquidity", "W")
 
 
 def _classify_liquidity_state(
@@ -910,5 +911,4 @@ def _no_data_signal(detector_name: str, timeframe: str) -> RegimeSignal:
         color="#94a3b8",
         as_of=datetime.date.today(),
     )
-
 

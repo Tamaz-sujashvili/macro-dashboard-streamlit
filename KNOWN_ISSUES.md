@@ -1,11 +1,12 @@
 # Macro Dashboard — Known Issues / Accepted Visual Trade-offs
 
-Last verified: 2026-07-13 (v17 final visual QA pass)
+Last verified: 2026-07-13 (final provider and visual QA pass)
 
 ## v17 Terminal redesign — QA summary
 
-- Final Playwright screenshot pass of all 18 tabs at 1600×900: **all tabs PASS** against the terminal checklist.
-- `pytest tests/ -q` → **28 passed**.
+- Final Playwright screenshot pass of all 19 tabs at 1600×900: **all tabs PASS** against the terminal checklist.
+- `pytest tests/ -q` → **32 passed**.
+- CALENDAR and the Regime Monitor BREADTH panel were captured and passed QA; BREADTH remains No-Data-safe when Polygon/DMA inputs are unavailable.
 - Emoji unicode-range grep outside `archive/` → **0 matches**.
 - Fixed during QA:
   - Removed residual emoji characters from `app.py`, `HANDOFF_v16_phase2.md`, `REGIME_INTEGRATION_PLAN.md`, and `FRONTEND_REDESIGN.md`.
@@ -21,7 +22,7 @@ These are intentional or unavoidable for the current design:
    - No white or pastel chart backgrounds remain.
 
 2. **Horizontal tab scrolling on small viewports**
-   - The top tab bar scrolls horizontally when the viewport is too narrow to fit all 18 tabs.
+   - The top tab bar scrolls horizontally when the viewport is too narrow to fit all 19 tabs.
    - This is expected Streamlit behavior; wrapping the tabs would break the layout on desktop.
 
 ## Not a known issue

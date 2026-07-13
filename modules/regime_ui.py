@@ -569,6 +569,7 @@ def _render_consensus_scoreboard(consensus: Mapping[str, Mapping[str, Any]]) -> 
         label = c.get("label", "No Data")
         agreement = c.get("agreement", 0.0)
         n = c.get("n", 0)
+        agreement_text = "1 detector" if n == 1 else f"agreement {fmt_pct(agreement * 100, 0)} · {n} detectors"
         color = _score_color(score) if label != "No Data" else COLORS["muted"]
         with col:
             st.markdown(
@@ -583,7 +584,7 @@ def _render_consensus_scoreboard(consensus: Mapping[str, Mapping[str, Any]]) -> 
                 f'color:{color}; margin-top:2px;">{label}</div>'
                 f'<div style="font-family:JetBrains Mono, monospace; font-size:10px; '
                 f'color:{COLORS["muted"]}; margin-top:6px;">'
-                f'agreement {fmt_pct(agreement * 100, 0)} · {n} detectors</div></div>',
+                f'{agreement_text}</div></div>',
                 unsafe_allow_html=True,
             )
 
