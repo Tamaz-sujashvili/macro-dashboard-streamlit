@@ -135,17 +135,5 @@ def breadth_detector(breadth: Dict[str, Any]) -> RegimeSignal:
     # percentile-like normalized positioning around the 40/60 regime bands.
     score = max(-1.0, min(1.0, (float(pct) - 50.0) / 25.0))
     color = COLORS["risk_on"] if state == "Broad" else COLORS["neutral"] if state == "Narrow" else COLORS["risk_off"]
-    hist = breadth.get("history", pd.DataFrame()).copy()
-    # Consensus history requires the same causal state/score fields as every
-    # other detector.  The persisted breadth history contains the raw % above
-    # 200DMA, from which this detector's fixed classification is reconstructed.
-    if isinstance(hist, pd.DataFrame) and not hist.empty and "pct_above_200" in hist:
-        historical_pct = pd.to_numeric(hist["pct_above_200"], errors="coerce")
-        hist["risk_score"] = ((historical_pct - 50.0) / 25.0).clip(-1.0, 1.0)
-        hist["state"] = pd.Series(
-            pd.NA, index=hist.index, dtype="object"
-        )
-        hist.loc[historical_pct >= 60, "state"] = "Broad"
-        hist.loc[(historical_pct >= 40) & (historical_pct < 60), "state"] = "Narrow"
-        hist.loc[historical_pct < 40, "state"] = "Deteriorating"
+    hist = breadth.get("history", pd.DataFrame())
     return RegimeSignal("Breadth", "D", state, score, 0.7, color, dt.date.today(), hist)

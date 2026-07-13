@@ -37,7 +37,7 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 
-from modules.regime_ui import current_daily_hysteresis_label, get_regime_consensus, latest_daily_flip_is_recent, render_recent_flip_banner, render_regime_monitor
+from modules.regime_ui import render_regime_monitor, get_regime_consensus
 from modules.config import COLORS, apply_house_style, fmt_pct, fmt_bp, fmt_dollar
 from modules.theme import inject_theme, terminal_badge, kpi_tile, style_dataframe
 from modules.calendar_data import fetch_calendar, fetch_finnhub_sentiment
@@ -56,7 +56,7 @@ inject_theme()
 
 
 # ── TERMINAL STATUS BAR ─────────────────────────────────────────────────────
-def _render_terminal_header(fred, mkt, consensus=None, signals=None) -> None:
+def _render_terminal_header(fred, mkt, consensus=None) -> None:
     """Render a single full-width terminal status bar.
 
     Left: product name. Center: ticking UTC timestamp. Right: daily consensus badge.
@@ -68,8 +68,6 @@ def _render_terminal_header(fred, mkt, consensus=None, signals=None) -> None:
         daily = consensus.get("D", {})
         daily_label = daily.get("label", "No Data")
         daily_score = daily.get("risk_score")
-        if signals is not None:
-            daily_label = current_daily_hysteresis_label(signals, daily_label)
         if daily_label == "Risk-On":
             badge_color = COLORS["risk_on"]
             badge_prefix = "RISK-ON"
@@ -84,14 +82,11 @@ def _render_terminal_header(fred, mkt, consensus=None, signals=None) -> None:
             badge_prefix = "N/A"
         score_part = f" {daily_score:+.2f}" if daily_score is not None else ""
         badge_text = f"{badge_prefix}{score_part}"
-        flipped = signals is not None and latest_daily_flip_is_recent(signals)
     except Exception:
         badge_color = COLORS["muted"]
         badge_text = "N/A"
-        flipped = False
 
     utc_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    flipped_html = f'<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:600;color:{COLORS["neutral"]};"> · FLIPPED</span>' if flipped else ""
     st.markdown(
         f'<div style="display:flex;justify-content:space-between;align-items:center;'
         f'background:{COLORS["panel"]};border-bottom:1px solid #1e2733;'
@@ -106,7 +101,6 @@ def _render_terminal_header(fred, mkt, consensus=None, signals=None) -> None:
         f'background:{badge_color};"></span>'
         f'<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:600;'
         f'color:{badge_color};">{badge_text}</span>'
-        f'{flipped_html}'
         f'</div></div>',
         unsafe_allow_html=True)
 
@@ -12859,8 +12853,7 @@ def main():
         )
 
     # ── HEADER ROW ──────────────────────────────────────────────────────────
-    _render_terminal_header(fred, mkt, consensus=regime_precomputed[1], signals=regime_precomputed[0])
-    render_recent_flip_banner(regime_precomputed[0])
+    _render_terminal_header(fred, mkt, consensus=regime_precomputed[1])
 
     energy_curve_regime = compute_regime_state(
         fred,
