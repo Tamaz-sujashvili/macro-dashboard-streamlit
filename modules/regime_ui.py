@@ -365,14 +365,10 @@ def _render_regime_history_ribbon(regime_state: Mapping[str, Any]) -> None:
             segments.append((regime, begin, end, duration))
             start = pos
     total = sum(item[3] for item in segments)
-    # The state is deliberately encoded with restrained terminal textures rather
-    # than a saturated categorical palette. Labels and tooltips carry the meaning.
-    patterns = {
-        "Goldilocks": "#121820",
-        "Reflation": "repeating-linear-gradient(135deg,rgba(148,163,184,.18) 0 1px,transparent 1px 7px),#121820",
-        "Stagflation": "repeating-linear-gradient(0deg,rgba(148,163,184,.16) 0 1px,transparent 1px 6px),#121820",
-        "Recession": "radial-gradient(rgba(148,163,184,.20) 1px,transparent 1px),#121820",
-    }
+    # Regime names, dates, and boundaries carry the meaning.  Keep every
+    # segment one neutral terminal color so the history does not imply a
+    # red/green/amber judgement or compete with the detector readouts.
+    segment_background = "#121820"
     def _block(regime: str, begin: pd.Timestamp, end: pd.Timestamp, duration: int) -> str:
         label = ""
         if duration / total >= 0.075:
@@ -382,7 +378,7 @@ def _render_regime_history_ribbon(regime_state: Mapping[str, Any]) -> None:
             )
         return (
             f'<div title="{html.escape(regime)} · {begin:%Y-%m} to {end:%Y-%m}" '
-            f'style="flex:{duration};min-width:3px;background:{patterns.get(regime, "#121820")};'
+            f'style="flex:{duration};min-width:3px;background:{segment_background};'
             "border-left:1px solid #3a4654;display:flex;align-items:center;"
             f'justify-content:center;overflow:hidden">{label}</div>'
         )
