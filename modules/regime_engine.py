@@ -815,6 +815,8 @@ def macro_quadrant_adapter(fred: Mapping[str, Any]) -> RegimeSignal:
                 "date": pd.to_datetime(item["date"]).date(),
                 "state": item["regime"],
                 "risk_score": _macro_regime_score(item["regime"]),
+                "credit_roc": item.get("credit_roc"),
+                "inflation_roc": item.get("inflation_roc"),
             }
         )
     history = pd.DataFrame(history_rows)
@@ -908,6 +910,5 @@ def _no_data_signal(detector_name: str, timeframe: str) -> RegimeSignal:
         color="#94a3b8",
         as_of=datetime.date.today(),
     )
-
 
 

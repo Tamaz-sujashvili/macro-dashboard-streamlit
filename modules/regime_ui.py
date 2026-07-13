@@ -29,6 +29,13 @@ from modules.regime_engine import (
 
 _GRID_COLOR = "#1e2733"
 
+REGIME_COLORS = {
+    "Goldilocks": "#34d399",
+    "Reflation": "#fbbf24",
+    "Stagflation": "#f87171",
+    "Recession": "#94a3b8",
+}
+
 _STATE_COLORS = {
     # TrendVol
     ("TrendVol", "Trend Confirmed"): COLORS["risk_on"],
@@ -92,6 +99,114 @@ def _label_from_score(score: float) -> str:
     if score < -0.3:
         return "Risk-Off"
     return "Neutral"
+
+
+def make_regime_quadrant_chart(regime_state: Mapping[str, Any]) -> go.Figure:
+    """Terminal-styled credit/inflation macro quadrant."""
+    credit_roc = regime_state.get("credit_roc")
+    inflation_roc = regime_state.get("inflation_roc")
+    fig = go.Figure()
+    max_abs = max(abs(credit_roc or 0), abs(inflation_roc or 0), 25)
+    axis_limit = round(max_abs * 1.25, 0)
+    quadrants = [
+        (-axis_limit, 0, 0, axis_limit, "Reflation", "left", "top"),
+        (0, axis_limit, 0, axis_limit, "Stagflation", "right", "top"),
+        (-axis_limit, 0, -axis_limit, 0, "Goldilocks", "left", "bottom"),
+        (0, axis_limit, -axis_limit, 0, "Recession", "right", "bottom"),
+    ]
+    for x0, x1, y0, y1, label, xanchor, yanchor in quadrants:
+        color = REGIME_COLORS[label]
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1, line=dict(width=0), fillcolor=color, opacity=0.10, layer="below")
+        fig.add_annotation(x=x0 + 6 if xanchor == "left" else x1 - 6, y=y1 - 6 if yanchor == "top" else y0 + 6,
+                           text=label.upper(), showarrow=False, font=dict(family="JetBrains Mono, monospace", size=10, color=color), xanchor=xanchor, yanchor=yanchor)
+    fig.add_hline(y=0, line_dash="dot", line_color=COLORS["border"], line_width=1)
+    fig.add_vline(x=0, line_dash="dot", line_color=COLORS["border"], line_width=1)
+    if credit_roc is not None and inflation_roc is not None:
+        regime = str(regime_state.get("regime", "Current"))
+        fig.add_trace(go.Scatter(x=[credit_roc], y=[inflation_roc], mode="markers+text", name="Current",
+            marker=dict(size=16, color=REGIME_COLORS.get(regime, COLORS["accent"]), line=dict(color=COLORS["text"], width=1)),
+            text=[regime.upper()], textposition="top center", hovertemplate="Credit ROC: %{x:.1f} bp<br>Inflation ROC: %{y:.1f} bp<extra></extra>"))
+    apply_house_style(fig, title="Macro Regime Quadrant", height=350)
+    fig.update_layout(showlegend=False, margin=dict(l=30, r=20, t=40, b=30))
+    fig.update_xaxes(title="Credit ROC (bp)", range=[-axis_limit, axis_limit], zeroline=False)
+    fig.update_yaxes(title="Inflation ROC (bp)", range=[-axis_limit, axis_limit], zeroline=False)
+    return fig
+
+
+def make_regime_history_chart(regime_state: Mapping[str, Any]) -> go.Figure:
+    """Full-width colored macro-regime history ribbon."""
+    history = regime_state.get("history", [])
+    if isinstance(history, pd.DataFrame):
+        df = history.copy()
+    else:
+        df = pd.DataFrame(history)
+    fig = go.Figure()
+    if df.empty or "date" not in df or "regime" not in df:
+        apply_house_style(fig, title="Macro Regime History", height=120)
+        fig.update_layout(margin=dict(l=10, r=10, t=35, b=20))
+        return fig
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+    start = 0
+    for index in range(1, len(df) + 1):
+        if index == len(df) or df.loc[index, "regime"] != df.loc[start, "regime"]:
+            regime = str(df.loc[start, "regime"])
+            begin, end = df.loc[start, "date"], df.loc[index - 1, "date"] + pd.offsets.MonthBegin(1)
+            color = REGIME_COLORS.get(regime, COLORS["muted"])
+            fig.add_vrect(x0=begin, x1=end, fillcolor=color, opacity=0.82, line_width=0, layer="below")
+            midpoint = begin + (end - begin) / 2
+            fig.add_trace(go.Scatter(x=[midpoint], y=[0.5], mode="markers", marker=dict(size=18, color=color, opacity=0.01),
+                                     hovertemplate=f"{regime}<br>{begin:%Y-%m} to {end:%Y-%m}<extra></extra>", showlegend=False))
+            start = index
+    apply_house_style(fig, title="Macro Regime History", height=120)
+    fig.update_layout(margin=dict(l=10, r=10, t=35, b=20), showlegend=False)
+    fig.update_xaxes(showgrid=False, tickformat="%Y-%m")
+    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, range=[0, 1])
+    return fig
+
+
+def _consensus_history(signals: Sequence[RegimeSignal], index: pd.DatetimeIndex) -> pd.Series:
+    """Forward-fill each detector's causal score and form a daily consensus."""
+    series = []
+    for signal in signals:
+        history = signal.history
+        if history is None or history.empty or not {"date", "risk_score"}.issubset(history.columns):
+            continue
+        values = history[["date", "risk_score"]].copy()
+        values["date"] = pd.to_datetime(values["date"], errors="coerce")
+        if getattr(values["date"].dt, "tz", None) is not None:
+            values["date"] = values["date"].dt.tz_localize(None)
+        values = values.dropna().drop_duplicates("date", keep="last").set_index("date")["risk_score"]
+        series.append(values.reindex(index, method="ffill"))
+    return pd.concat(series, axis=1).mean(axis=1) if series else pd.Series(0.0, index=index)
+
+
+def make_spy_regime_chart(spy_df: pd.DataFrame, signals: Sequence[RegimeSignal]) -> go.Figure:
+    """TradingView-style SPY close with full-height consensus-regime bands."""
+    fig = go.Figure()
+    if spy_df is None or spy_df.empty or "close" not in spy_df:
+        apply_house_style(fig, title="SPY Price and Consensus Regime", height=420)
+        return fig
+    prices = spy_df.copy()
+    prices.index = pd.to_datetime(prices.index)
+    if getattr(prices.index, "tz", None) is not None:
+        prices.index = prices.index.tz_localize(None)
+    prices = prices.sort_index()
+    scores = _consensus_history(signals, prices.index)
+    states = pd.Series(np.select([scores > 0.3, scores < -0.3], ["Risk-On", "Risk-Off"], default="Neutral"), index=prices.index)
+    colors = {"Risk-On": "rgba(52,211,153,0.10)", "Risk-Off": "rgba(248,113,113,0.10)", "Neutral": "rgba(148,163,184,0.06)"}
+    start = 0
+    for i in range(1, len(states) + 1):
+        if i == len(states) or states.iloc[i] != states.iloc[start]:
+            fig.add_vrect(x0=states.index[start], x1=states.index[i - 1] + pd.Timedelta(days=1), fillcolor=colors[states.iloc[start]], line_width=0, layer="below")
+            start = i
+    fig.add_trace(go.Scatter(x=prices.index, y=prices["close"], name="SPY close", line=dict(color=COLORS["accent"], width=1.8), hovertemplate="%{x|%Y-%m-%d}<br>SPY %{y:,.2f}<extra></extra>"))
+    for label, color in [("Risk-On", COLORS["risk_on"]), ("Neutral", COLORS["muted"]), ("Risk-Off", COLORS["risk_off"])]:
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name=label, marker=dict(size=8, color=color)))
+    apply_house_style(fig, title="SPY Price and Consensus Regime", height=420)
+    fig.update_layout(legend=dict(orientation="h", y=1.01, x=1, xanchor="right"), margin=dict(l=40, r=20, t=45, b=30))
+    fig.update_yaxes(title="SPY")
+    return fig
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +300,24 @@ def _render_breadth_panel(signals: Sequence[RegimeSignal]) -> None:
             fig.update_layout(yaxis2=dict(overlaying="y", side="right", range=[0, 100], title="% > 200DMA"))
         apply_house_style(fig, title="Breadth", height=260)
         st.plotly_chart(fig, width="stretch", key="chart_regime_breadth")
+
+
+def _macro_regime_state(signals: Sequence[RegimeSignal]) -> Dict[str, Any]:
+    macro = next((signal for signal in signals if signal.detector_name == "MacroQuadrant"), None)
+    if macro is None:
+        return {"history": []}
+    history = macro.history.copy() if macro.history is not None else pd.DataFrame()
+    if history.empty:
+        return {"regime": macro.state, "color": macro.color, "history": []}
+    history["regime"] = history.get("state", macro.state)
+    latest = history.iloc[-1]
+    return {
+        "regime": macro.state,
+        "color": macro.color,
+        "credit_roc": latest.get("credit_roc"),
+        "inflation_roc": latest.get("inflation_roc"),
+        "history": history.to_dict("records"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -497,6 +630,11 @@ def render_regime_monitor(
     signals, consensus, spy_df, vix_df = precomputed if precomputed is not None else get_regime_consensus(fred, mkt)
 
     _render_consensus_scoreboard(consensus)
+    st.divider()
+    macro_state = _macro_regime_state(signals)
+    st.plotly_chart(make_regime_history_chart(macro_state), width="stretch", key="chart_regime_history_ribbon")
+    st.plotly_chart(make_spy_regime_chart(spy_df, signals), width="stretch", key="chart_regime_spy_bands")
+    st.plotly_chart(make_regime_quadrant_chart(macro_state), width="stretch", key="chart_regime_quadrant")
     st.divider()
     _render_detector_matrix(signals)
     st.divider()
