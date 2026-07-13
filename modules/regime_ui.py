@@ -365,10 +365,32 @@ def _render_regime_history_ribbon(regime_state: Mapping[str, Any]) -> None:
             segments.append((regime, begin, end, duration))
             start = pos
     total = sum(item[3] for item in segments)
-    blocks = "".join(f'<div title="{html.escape(regime)} · {begin:%Y-%m} to {end:%Y-%m}" style="flex:{duration};background:{REGIME_COLORS.get(regime, COLORS["muted"])}"></div>' for regime, begin, end, duration in segments)
+    # The state is deliberately encoded with restrained terminal textures rather
+    # than a saturated categorical palette. Labels and tooltips carry the meaning.
+    patterns = {
+        "Goldilocks": "#121820",
+        "Reflation": "repeating-linear-gradient(135deg,rgba(148,163,184,.18) 0 1px,transparent 1px 7px),#121820",
+        "Stagflation": "repeating-linear-gradient(0deg,rgba(148,163,184,.16) 0 1px,transparent 1px 6px),#121820",
+        "Recession": "radial-gradient(rgba(148,163,184,.20) 1px,transparent 1px),#121820",
+    }
+    def _block(regime: str, begin: pd.Timestamp, end: pd.Timestamp, duration: int) -> str:
+        label = ""
+        if duration / total >= 0.075:
+            label = (
+                "<span style='font:700 9px JetBrains Mono,monospace;color:#9aa9b9;"
+                f"letter-spacing:.06em;white-space:nowrap'>{html.escape(regime.upper())}</span>"
+            )
+        return (
+            f'<div title="{html.escape(regime)} · {begin:%Y-%m} to {end:%Y-%m}" '
+            f'style="flex:{duration};min-width:3px;background:{patterns.get(regime, "#121820")};'
+            "border-left:1px solid #3a4654;display:flex;align-items:center;"
+            f'justify-content:center;overflow:hidden">{label}</div>'
+        )
+
+    blocks = "".join(_block(regime, begin, end, duration) for regime, begin, end, duration in segments)
     years = sorted({date.year for date in history["date"]})
     labels = "".join(f'<span>{year}</span>' for year in years[::max(1, len(years)//6)])
-    st.markdown(f'''<div style="margin:4px 0 18px"><div style="font:700 11px JetBrains Mono,monospace;color:#e6edf3;letter-spacing:.07em;margin-bottom:8px">MACRO REGIME HISTORY</div><div style="height:44px;display:flex;border:1px solid #1e2733;border-radius:3px;overflow:hidden">{blocks}</div><div style="display:flex;justify-content:space-between;font:10px JetBrains Mono,monospace;color:#94a3b8;margin-top:5px">{labels}</div></div>''', unsafe_allow_html=True)
+    st.markdown(f'''<div style="margin:4px 0 18px"><div style="font:700 11px JetBrains Mono,monospace;color:#e6edf3;letter-spacing:.07em;margin-bottom:8px">MACRO REGIME HISTORY</div><div style="height:44px;display:flex;border:1px solid #293241;border-radius:3px;overflow:hidden;background:#0d1117">{blocks}</div><div style="display:flex;justify-content:space-between;font:10px JetBrains Mono,monospace;color:#94a3b8;margin-top:5px">{labels}</div></div>''', unsafe_allow_html=True)
 
 
 def _render_detector_lightweight_charts(signals: Sequence[RegimeSignal]) -> None:
