@@ -1719,14 +1719,6 @@ def fetch_amihud_illiquidity(ticker="SPY", lookback=30):
         return None
 
 
-class _StaticValueGetter:
-    def __init__(self, value):
-        self.value = value
-
-    def __call__(self):
-        return self.value
-
-
 @st.cache_data(ttl=3600)
 def fetch_cot_data():
     """
@@ -1830,8 +1822,6 @@ def fetch_cot_data():
                     "net_lev": float(latest.get("lev_money_positions_long_all", 0)) - float(latest.get("lev_money_positions_short_all", 0)),
                     "net_comm": latest_net_comm,
                     "net_small": latest_net_small,
-                    "getnetcomm": _StaticValueGetter(latest_net_comm),
-                    "getnetsmall": _StaticValueGetter(latest_net_small),
                     "date": latest.get("report_date_as_yyyy_mm_dd", "")[:10],
                     "history": history,
                     "open_interest": float(latest.get("open_interest_all", 0)),
