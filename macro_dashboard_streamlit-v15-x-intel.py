@@ -13631,6 +13631,25 @@ def main():
             mime="text/html",
             use_container_width=False)
 
+    st.markdown(
+        """
+        <div style="margin:42px 0 18px;padding:18px 0 0;border-top:1px solid #293241;"
+             "font-family:'JetBrains Mono',monospace;display:flex;flex-wrap:wrap;gap:12px 28px;"
+             "align-items:flex-start">
+          <div style="flex:1 1 460px;color:#94a3b8;font-size:11px;line-height:1.65">
+            <span style="color:#7dd3fc;font-weight:700;letter-spacing:.08em">BUILT BY TAMAZ SUJASHVILI</span><br>
+            Quantitative Research Consultant at WorldQuant. This open-source dashboard demonstrates a
+            multi-factor macro research approach that integrates fundamental macro data, technical analysis,
+            and regime detection. Additional research systems are developed privately.
+          </div>
+          <a href="https://tamaz-sujashvili.pages.dev/" target="_blank" rel="noopener noreferrer"
+             style="color:#7dd3fc;font:700 11px 'JetBrains Mono',monospace;letter-spacing:.06em;white-space:nowrap;"
+          >TAMAZ-SUJASHVILI.PAGES.DEV ↗</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 if __name__ == "__main__":
     if "--export" in sys.argv:
