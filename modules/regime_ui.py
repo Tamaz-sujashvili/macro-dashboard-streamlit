@@ -136,6 +136,36 @@ def render_lw_chart(config: Dict[str, Any], height: int, key: str) -> None:
       const readout = document.createElement('div'); readout.style.cssText='position:absolute;top:11px;right:12px;color:#94a3b8;font-size:10px;z-index:4'; root.appendChild(readout);
       const button = (label, fn) => {{ const b=document.createElement('button'); b.textContent=label; b.style.cssText='background:#11161f;color:#94a3b8;border:1px solid #1e2733;border-radius:3px;padding:3px 6px;font:10px JetBrains Mono,monospace;cursor:pointer'; b.onclick=fn; controls.appendChild(b); return b; }};
       let active = payload.defaultTimeframe || '1D'; let main, bands;
+      class StateBlockRenderer {{
+        constructor() {{ this.data=null; this.options=null; }}
+        update(data, options) {{ this.data=data; this.options=options; }}
+        draw(target) {{
+          target.useMediaCoordinateSpace(scope => {{
+            if (!this.data || !this.data.bars.length || this.data.visibleRange===null) return;
+            const ctx=scope.context, bars=this.data.bars, height=scope.mediaSize.height;
+            const start=Math.max(0, this.data.visibleRange.from), end=Math.min(bars.length, this.data.visibleRange.to);
+            for(let i=start;i<end;i++) {{
+              const bar=bars[i], point=bar.originalData, half=Math.max(1,this.data.barSpacing/2+.5);
+              const alpha=Math.min(.64, .18 + Math.abs(point.value || 0)*.45);
+              const color=point.state==='Risk-On' ? `rgba(52,211,153,${{alpha}})` : point.state==='Risk-Off' ? `rgba(248,113,113,${{alpha}})` : `rgba(148,163,184,${{Math.max(.13,alpha*.55)}})`;
+              ctx.fillStyle=color; ctx.fillRect(Math.floor(bar.x-half), 8, Math.ceil(half*2), Math.max(1,height-16));
+              const prior=i>0 ? bars[i-1].originalData : null;
+              if (!prior || prior.state!==point.state) {{
+                ctx.fillStyle='rgba(230,237,243,.78)'; ctx.fillRect(Math.round(bar.x-half), 7, 1, Math.max(1,height-14));
+                ctx.beginPath(); ctx.arc(bar.x, 8, 2.5, 0, Math.PI*2); ctx.fill();
+              }}
+            }}
+          }});
+        }}
+      }}
+      class StateBlockSeries {{
+        constructor() {{ this.rendererImpl=new StateBlockRenderer(); }}
+        priceValueBuilder(row) {{ return [1, 0, .5]; }}
+        isWhitespace(row) {{ return row.value===undefined; }}
+        renderer() {{ return this.rendererImpl; }}
+        update(data, options) {{ this.rendererImpl.update(data, options); }}
+        defaultOptions() {{ return {{...C.customSeriesDefaultOptions}}; }}
+      }}
       function clearSeries() {{ if(main) chart.removeSeries(main); if(bands) chart.removeSeries(bands); }}
       function draw(tf) {{
         active=tf; clearSeries(); const d=payload.datasets[tf];
@@ -143,6 +173,10 @@ def render_lw_chart(config: Dict[str, Any], height: int, key: str) -> None:
           bands=chart.addHistogramSeries({{ priceScaleId:'regime', lastValueVisible:false, priceLineVisible:false, base:0 }});
           chart.priceScale('regime').applyOptions({{ scaleMargins:{{top:0,bottom:0}}, visible:false }}); bands.setData(d.bands);
           main=chart.addCandlestickSeries({{ upColor:'#34d399',downColor:'#f87171',borderUpColor:'#34d399',borderDownColor:'#f87171',wickUpColor:'#34d399',wickDownColor:'#f87171' }}); main.setData(d.candles);
+        }} else if(payload.kind==='stateblocks') {{
+          main=chart.addCustomSeries(new StateBlockSeries(), {{priceLineVisible:false,lastValueVisible:false}});
+          main.setData(d.values);
+          chart.priceScale('right').applyOptions({{visible:false, scaleMargins:{{top:.06,bottom:.06}}}});
         }} else {{
           main=chart.addBaselineSeries({{ baseValue:{{type:'price',price:0}}, topLineColor:'#34d399',topFillColor1:'rgba(52,211,153,.22)',topFillColor2:'rgba(52,211,153,.02)',bottomLineColor:'#f87171',bottomFillColor1:'rgba(248,113,113,.02)',bottomFillColor2:'rgba(248,113,113,.22)',lineWidth:2 }});
           main.setData(d.values); main.createPriceLine({{price:.3,color:'rgba(52,211,153,.55)',lineStyle:C.LineStyle.Dotted,lineWidth:1,axisLabelVisible:false}}); main.createPriceLine({{price:-.3,color:'rgba(248,113,113,.55)',lineStyle:C.LineStyle.Dotted,lineWidth:1,axisLabelVisible:false}});
@@ -151,7 +185,7 @@ def render_lw_chart(config: Dict[str, Any], height: int, key: str) -> None:
       }}
       Object.keys(payload.datasets).forEach(tf => button(tf, () => draw(tf)));
       if(payload.kind==='candles') ['1Y','3Y','5Y','ALL'].forEach(range => button(range, () => {{ const data=payload.datasets[active].candles; if(range==='ALL') return chart.timeScale().fitContent(); const n={{'1Y':252,'3Y':756,'5Y':1260}}[range]; const from=data[Math.max(0,data.length-n)]?.time; const to=data[data.length-1]?.time; if(from&&to) chart.timeScale().setVisibleRange({{from,to}}); }}));
-      chart.subscribeCrosshairMove(param => {{ if(!param.time || !main) {{readout.textContent='';return;}} const v=param.seriesData.get(main); if(payload.kind==='candles' && v) readout.textContent=`O ${{v.open?.toFixed(2)}} H ${{v.high?.toFixed(2)}} L ${{v.low?.toFixed(2)}} C ${{v.close?.toFixed(2)}} · ${{payload.regimeByTime?.[param.time] || ''}}`; else if(v) readout.textContent=`RISK SCORE ${{v.value?.toFixed(2)}}`; }});
+      chart.subscribeCrosshairMove(param => {{ if(!param.time || !main) {{readout.textContent='';return;}} const v=param.seriesData.get(main); if(payload.kind==='candles' && v) readout.textContent=`O ${{v.open?.toFixed(2)}} H ${{v.high?.toFixed(2)}} L ${{v.low?.toFixed(2)}} C ${{v.close?.toFixed(2)}} · ${{payload.regimeByTime?.[param.time] || ''}}`; else if(payload.kind==='stateblocks' && v) readout.textContent=`${{v.state || 'Neutral'}} · RISK ${{v.value?.toFixed(2)}}`; else if(v) readout.textContent=`RISK SCORE ${{v.value?.toFixed(2)}}`; }});
       new ResizeObserver(() => chart.applyOptions({{width:root.clientWidth}})).observe(root); draw(active);
       // Lightweight Charts v4 may inject an attribution link despite the
       // attributionLogo option. This terminal embeds no watermark.
@@ -351,8 +385,27 @@ def _render_detector_lightweight_charts(signals: Sequence[RegimeSignal]) -> None
         if len(history) < 2:
             unavailable.append(sig)
             continue
-        values = [{"time": _time_value(row.date), "value": float(row.risk_score)} for row in history.itertuples()]
-        render_lw_chart({"kind": "baseline", "title": f"{sig.detector_name.upper()} · {sig.timeframe} RISK SCORE", "datasets": {"HISTORY": {"values": values}}, "defaultTimeframe": "HISTORY"}, 220, f"lw_detector_{sig.detector_name.lower()}_{sig.timeframe.lower()}")
+        def _state(score: float) -> str:
+            if score > 0.3:
+                return "Risk-On"
+            if score < -0.3:
+                return "Risk-Off"
+            return "Neutral"
+
+        values = [
+            {"time": _time_value(row.date), "value": float(row.risk_score), "state": _state(float(row.risk_score))}
+            for row in history.itertuples()
+        ]
+        render_lw_chart(
+            {
+                "kind": "stateblocks",
+                "title": f"{sig.detector_name.upper()} · {sig.timeframe} STATE HISTORY",
+                "datasets": {"HISTORY": {"values": values}},
+                "defaultTimeframe": "HISTORY",
+            },
+            132,
+            f"lw_detector_{sig.detector_name.lower()}_{sig.timeframe.lower()}",
+        )
     if unavailable:
         st.caption("CURRENT-ONLY / UNAVAILABLE DETECTORS")
         cols = st.columns(min(3, len(unavailable)))
