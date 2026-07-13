@@ -634,7 +634,7 @@ def render_regime_monitor(
     macro_state = _macro_regime_state(signals)
     st.plotly_chart(make_regime_history_chart(macro_state), width="stretch", key="chart_regime_history_ribbon")
     st.plotly_chart(make_spy_regime_chart(spy_df, signals), width="stretch", key="chart_regime_spy_bands")
-    st.plotly_chart(make_regime_quadrant_chart(macro_state), width="stretch", key="chart_regime_quadrant")
+    st.plotly_chart(make_regime_quadrant_chart(macro_state), width="stretch", key="chart_regime_monitor_quadrant")
     st.divider()
     _render_detector_matrix(signals)
     st.divider()
