@@ -636,6 +636,22 @@ def fetch_fred():
                 rows.append((value, o["date"]))
             return rows
 
+        def _fred_hist_monthly(series_id, units="lin", months=90, record_error=False):
+            """Collapse high-frequency FRED series to one latest value per month."""
+            obs = _fred_req(series_id, units, months * 32, record_error=record_error)
+            monthly = {}
+            for o in obs:  # FRED is newest-first; retain the latest observation.
+                if o.get("value") == ".":
+                    continue
+                try:
+                    value = float(o["value"])
+                    if series_id in {"BAMLH0A0HYM2", "BAMLC0A0CM"} and units == "lin":
+                        value *= 100.0
+                    monthly.setdefault(o["date"][:7], value)
+                except (TypeError, ValueError):
+                    continue
+            return [(value, date) for date, value in sorted(monthly.items())[-months:]]
+
         def _get(sid):
             units = "pc1" if sid in pct_series else "lin"
             obs = _fred_req(sid, units, 5)
@@ -774,7 +790,7 @@ def fetch_fred():
 
         # Historical series used by Phillips Curve and regime state modules
         results["CPI_HIST"]    = _fred_hist("CPIAUCSL", "pc1", 90, record_error=False)
-        results["SPREAD_HIST"] = _fred_hist("BAMLC0A0CM", "lin", 90, record_error=False)
+        results["SPREAD_HIST"] = _fred_hist_monthly("BAMLC0A0CM", "lin", 90, record_error=False)
         results["UNRATE_HIST"] = _fred_hist("UNRATE",   "lin", 36, record_error=False)
         results["T10Y3M_HIST"] = _fred_hist("T10Y3M",   "lin", 90, record_error=False)
         results["T10Y2Y_HIST"] = _fred_hist("T10Y2Y",   "lin", 90, record_error=False)

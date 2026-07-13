@@ -7,12 +7,15 @@ Keeps all presentation code separate from the pure-computation
 from __future__ import annotations
 
 import datetime
+import html
+import json
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from modules.config import COLORS, apply_house_style, fmt_pct
 from modules.data_fetch import fetch_spy_vix_history
@@ -99,6 +102,67 @@ def _label_from_score(score: float) -> str:
     if score < -0.3:
         return "Risk-Off"
     return "Neutral"
+
+
+_LW_SCRIPT = "https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"
+
+
+def render_lw_chart(config: Dict[str, Any], height: int, key: str) -> None:
+    """Render a terminal-themed TradingView lightweight-charts iframe.
+
+    The component owns its controls and state, so timeframe/range changes never
+    cause a Streamlit rerun. All data is serialized before entering the iframe.
+    """
+    payload = json.dumps(config, default=str).replace("</", "<\\/")
+    dom_id = f"lw-{''.join(ch if ch.isalnum() else '-' for ch in key)}"
+    component_html = f"""
+    <div id="{dom_id}" data-component-key="{html.escape(key)}" style="height:{height}px;position:relative;background:#0d1117;border:1px solid #1e2733;font-family:'JetBrains Mono',monospace;overflow:hidden"></div>
+    <script src="{_LW_SCRIPT}"></script>
+    <script>
+    const payload = {payload};
+    const root = document.getElementById('{dom_id}');
+    function boot() {{
+      if (!window.LightweightCharts) {{ root.innerHTML='<div style="padding:12px;color:#94a3b8">CHART LIBRARY UNAVAILABLE</div>'; return; }}
+      const C = window.LightweightCharts;
+      const chart = C.createChart(root, {{
+        width: root.clientWidth, height: {height},
+        layout: {{ background: {{ color: '#0d1117' }}, textColor: '#94a3b8', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }},
+        grid: {{ vertLines: {{ color: 'rgba(148,163,184,0.08)' }}, horzLines: {{ color: 'rgba(148,163,184,0.08)' }} }},
+        rightPriceScale: {{ borderColor: '#1e2733' }}, timeScale: {{ borderColor: '#1e2733', timeVisible: true }},
+        crosshair: {{ mode: C.CrosshairMode.Normal }}, watermark: {{ visible: false }}, attributionLogo: false,
+      }});
+      const title = document.createElement('div'); title.textContent = payload.title; title.style.cssText='position:absolute;top:10px;left:12px;color:#e6edf3;font-size:11px;font-weight:700;letter-spacing:.07em;pointer-events:none;z-index:3'; root.appendChild(title);
+      const controls = document.createElement('div'); controls.style.cssText='position:absolute;top:31px;left:10px;z-index:4;display:flex;gap:4px'; root.appendChild(controls);
+      const readout = document.createElement('div'); readout.style.cssText='position:absolute;top:11px;right:12px;color:#94a3b8;font-size:10px;z-index:4'; root.appendChild(readout);
+      const button = (label, fn) => {{ const b=document.createElement('button'); b.textContent=label; b.style.cssText='background:#11161f;color:#94a3b8;border:1px solid #1e2733;border-radius:3px;padding:3px 6px;font:10px JetBrains Mono,monospace;cursor:pointer'; b.onclick=fn; controls.appendChild(b); return b; }};
+      let active = payload.defaultTimeframe || '1D'; let main, bands;
+      function clearSeries() {{ if(main) chart.removeSeries(main); if(bands) chart.removeSeries(bands); }}
+      function draw(tf) {{
+        active=tf; clearSeries(); const d=payload.datasets[tf];
+        if(payload.kind==='candles') {{
+          bands=chart.addHistogramSeries({{ priceScaleId:'regime', lastValueVisible:false, priceLineVisible:false, base:0 }});
+          chart.priceScale('regime').applyOptions({{ scaleMargins:{{top:0,bottom:0}}, visible:false }}); bands.setData(d.bands);
+          main=chart.addCandlestickSeries({{ upColor:'#34d399',downColor:'#f87171',borderUpColor:'#34d399',borderDownColor:'#f87171',wickUpColor:'#34d399',wickDownColor:'#f87171' }}); main.setData(d.candles);
+        }} else {{
+          main=chart.addBaselineSeries({{ baseValue:{{type:'price',price:0}}, topLineColor:'#34d399',topFillColor1:'rgba(52,211,153,.22)',topFillColor2:'rgba(52,211,153,.02)',bottomLineColor:'#f87171',bottomFillColor1:'rgba(248,113,113,.02)',bottomFillColor2:'rgba(248,113,113,.22)',lineWidth:2 }});
+          main.setData(d.values); main.createPriceLine({{price:.3,color:'rgba(52,211,153,.55)',lineStyle:C.LineStyle.Dotted,lineWidth:1,axisLabelVisible:false}}); main.createPriceLine({{price:-.3,color:'rgba(248,113,113,.55)',lineStyle:C.LineStyle.Dotted,lineWidth:1,axisLabelVisible:false}});
+        }}
+        chart.timeScale().fitContent();
+      }}
+      Object.keys(payload.datasets).forEach(tf => button(tf, () => draw(tf)));
+      if(payload.kind==='candles') ['1Y','3Y','5Y','ALL'].forEach(range => button(range, () => {{ const data=payload.datasets[active].candles; if(range==='ALL') return chart.timeScale().fitContent(); const n={{'1Y':252,'3Y':756,'5Y':1260}}[range]; const from=data[Math.max(0,data.length-n)]?.time; const to=data[data.length-1]?.time; if(from&&to) chart.timeScale().setVisibleRange({{from,to}}); }}));
+      chart.subscribeCrosshairMove(param => {{ if(!param.time || !main) {{readout.textContent='';return;}} const v=param.seriesData.get(main); if(payload.kind==='candles' && v) readout.textContent=`O ${{v.open?.toFixed(2)}} H ${{v.high?.toFixed(2)}} L ${{v.low?.toFixed(2)}} C ${{v.close?.toFixed(2)}} · ${{payload.regimeByTime?.[param.time] || ''}}`; else if(v) readout.textContent=`RISK SCORE ${{v.value?.toFixed(2)}}`; }});
+      new ResizeObserver(() => chart.applyOptions({{width:root.clientWidth}})).observe(root); draw(active);
+      // Lightweight Charts v4 may inject an attribution link despite the
+      // attributionLogo option. This terminal embeds no watermark.
+      const hideAttribution = () => root.querySelectorAll('a[href*="tradingview"]').forEach(a => a.style.display='none');
+      hideAttribution(); setTimeout(hideAttribution, 50);
+    }}
+    if (window.LightweightCharts) boot(); else window.addEventListener('load', boot, {{once:true}});
+    </script>"""
+    # ``components.html`` lacks a key= parameter on older Streamlit releases;
+    # the namespaced DOM id above keeps the component instances unique.
+    components.html(component_html, height=height)
 
 
 def make_regime_quadrant_chart(regime_state: Mapping[str, Any]) -> go.Figure:
@@ -207,6 +271,97 @@ def make_spy_regime_chart(spy_df: pd.DataFrame, signals: Sequence[RegimeSignal])
     fig.update_layout(legend=dict(orientation="h", y=1.01, x=1, xanchor="right"), margin=dict(l=40, r=20, t=45, b=30))
     fig.update_yaxes(title="SPY")
     return fig
+
+
+def _naive_index(index: pd.Index) -> pd.DatetimeIndex:
+    parsed = pd.DatetimeIndex(pd.to_datetime(index, errors="coerce"))
+    return parsed.tz_localize(None) if parsed.tz is not None else parsed
+
+
+def _ohlc_for_timeframe(prices: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+    rule = {"1D": None, "1W": "W-FRI", "1M": "MS"}[timeframe]
+    if rule is None:
+        return prices
+    return prices.resample(rule).agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+
+
+def _time_value(value: Any) -> str:
+    return pd.Timestamp(value).strftime("%Y-%m-%d")
+
+
+def _render_spy_lightweight_chart(spy_df: pd.DataFrame, signals: Sequence[RegimeSignal]) -> None:
+    if spy_df is None or spy_df.empty or not {"open", "high", "low", "close"}.issubset(spy_df.columns):
+        st.markdown('<div class="mono" style="color:#94a3b8">SPY PRICE HISTORY UNAVAILABLE</div>', unsafe_allow_html=True)
+        return
+    prices = spy_df[["open", "high", "low", "close"]].copy()
+    prices.index = _naive_index(prices.index)
+    prices = prices[~prices.index.isna()].sort_index()
+    scores = _consensus_history(signals, prices.index).fillna(0.0)
+    datasets, labels = {}, {}
+    band_colors = {"Risk-On": "rgba(52,211,153,0.10)", "Risk-Off": "rgba(248,113,113,0.10)", "Neutral": "rgba(148,163,184,0.06)"}
+    for timeframe in ("1D", "1W", "1M"):
+        ohlc = _ohlc_for_timeframe(prices, timeframe)
+        sampled_scores = scores.reindex(ohlc.index, method="ffill").fillna(0.0)
+        states = np.select([sampled_scores > .3, sampled_scores < -.3], ["Risk-On", "Risk-Off"], default="Neutral")
+        candles = [{"time": _time_value(date), "open": float(row.open), "high": float(row.high), "low": float(row.low), "close": float(row.close)} for date, row in ohlc.iterrows()]
+        bands = [{"time": _time_value(date), "value": 1, "color": band_colors[state]} for date, state in zip(ohlc.index, states)]
+        datasets[timeframe] = {"candles": candles, "bands": bands}
+        labels.update({_time_value(date): state for date, state in zip(ohlc.index, states)})
+    render_lw_chart({"kind": "candles", "title": "SPY PRICE AND CONSENSUS REGIME", "datasets": datasets, "regimeByTime": labels, "defaultTimeframe": "1D"}, 480, "lw_regime_spy")
+
+
+def _render_regime_history_ribbon(regime_state: Mapping[str, Any]) -> None:
+    history = pd.DataFrame(regime_state.get("history", []))
+    if history.empty or not {"date", "regime"}.issubset(history.columns):
+        st.caption("MACRO REGIME HISTORY UNAVAILABLE")
+        return
+    history["date"] = pd.to_datetime(history["date"], errors="coerce")
+    history = history.dropna(subset=["date"]).sort_values("date").drop_duplicates("date", keep="last").reset_index(drop=True)
+    if len(history) < 2:
+        st.caption("MACRO REGIME HISTORY AWAITING MULTI-MONTH DATA")
+        return
+    segments = []
+    start = 0
+    for pos in range(1, len(history) + 1):
+        if pos == len(history) or history.loc[pos, "regime"] != history.loc[start, "regime"]:
+            begin = history.loc[start, "date"]
+            end = history.loc[pos, "date"] if pos < len(history) else history.loc[pos - 1, "date"] + pd.offsets.MonthBegin(1)
+            regime = str(history.loc[start, "regime"])
+            duration = max(1, (end - begin).days)
+            segments.append((regime, begin, end, duration))
+            start = pos
+    total = sum(item[3] for item in segments)
+    blocks = "".join(f'<div title="{html.escape(regime)} · {begin:%Y-%m} to {end:%Y-%m}" style="flex:{duration};background:{REGIME_COLORS.get(regime, COLORS["muted"])}"></div>' for regime, begin, end, duration in segments)
+    years = sorted({date.year for date in history["date"]})
+    labels = "".join(f'<span>{year}</span>' for year in years[::max(1, len(years)//6)])
+    st.markdown(f'''<div style="margin:4px 0 18px"><div style="font:700 11px JetBrains Mono,monospace;color:#e6edf3;letter-spacing:.07em;margin-bottom:8px">MACRO REGIME HISTORY</div><div style="height:44px;display:flex;border:1px solid #1e2733;border-radius:3px;overflow:hidden">{blocks}</div><div style="display:flex;justify-content:space-between;font:10px JetBrains Mono,monospace;color:#94a3b8;margin-top:5px">{labels}</div></div>''', unsafe_allow_html=True)
+
+
+def _render_detector_lightweight_charts(signals: Sequence[RegimeSignal]) -> None:
+    st.subheader("Detector History")
+    unavailable: List[RegimeSignal] = []
+    for sig in signals:
+        history = sig.history.copy() if sig.history is not None else pd.DataFrame()
+        if history.empty or not {"date", "risk_score"}.issubset(history.columns):
+            unavailable.append(sig)
+            continue
+        history["date"] = pd.to_datetime(history["date"], errors="coerce")
+        history["risk_score"] = pd.to_numeric(history["risk_score"], errors="coerce")
+        history = history.dropna(subset=["date", "risk_score"]).sort_values("date").drop_duplicates("date", keep="last")
+        if len(history) < 2:
+            unavailable.append(sig)
+            continue
+        values = [{"time": _time_value(row.date), "value": float(row.risk_score)} for row in history.itertuples()]
+        render_lw_chart({"kind": "baseline", "title": f"{sig.detector_name.upper()} · {sig.timeframe} RISK SCORE", "datasets": {"HISTORY": {"values": values}}, "defaultTimeframe": "HISTORY"}, 220, f"lw_detector_{sig.detector_name.lower()}_{sig.timeframe.lower()}")
+    if unavailable:
+        st.caption("CURRENT-ONLY / UNAVAILABLE DETECTORS")
+        cols = st.columns(min(3, len(unavailable)))
+        for col, sig in zip(cols * ((len(unavailable) + len(cols) - 1) // len(cols)), unavailable):
+            with col:
+                if sig.state == "No Data":
+                    st.markdown(f'<div style="border:1px solid #1e2733;border-left:2px solid #94a3b8;padding:8px;font:11px JetBrains Mono,monospace;color:#94a3b8">{sig.detector_name.upper()} · {sig.timeframe}<br>UNAVAILABLE</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div style="border:1px solid #1e2733;border-left:2px solid {_score_color(sig.risk_score)};padding:8px;font:11px JetBrains Mono,monospace;color:#e6edf3">{sig.detector_name.upper()} · {sig.timeframe}<br>{sig.state.upper()} · {sig.risk_score:+.2f}</div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -632,15 +787,14 @@ def render_regime_monitor(
     _render_consensus_scoreboard(consensus)
     st.divider()
     macro_state = _macro_regime_state(signals)
-    st.plotly_chart(make_regime_history_chart(macro_state), width="stretch", key="chart_regime_history_ribbon")
-    st.plotly_chart(make_spy_regime_chart(spy_df, signals), width="stretch", key="chart_regime_spy_bands")
-    st.plotly_chart(make_regime_quadrant_chart(macro_state), width="stretch", key="chart_regime_monitor_quadrant")
+    _render_regime_history_ribbon(macro_state)
+    _render_spy_lightweight_chart(spy_df, signals)
     st.divider()
     _render_detector_matrix(signals)
     st.divider()
     _render_breadth_panel(signals)
     st.divider()
-    _render_detector_history_charts(signals)
+    _render_detector_lightweight_charts(signals)
     st.divider()
     _render_timeline_heatmap(signals)
     st.divider()
