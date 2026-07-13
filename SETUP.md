@@ -129,3 +129,19 @@ If the app shows:
 
 - Make sure you installed all requirements (`pip install -r requirements.txt`).
 - Run tests from the project root: `python3 -m pytest tests/ -q`.
+# Data provider secrets
+
+Create `.streamlit/secrets.toml` (this file is ignored) with only the keys you use:
+
+```toml
+FRED_API_KEY = ""
+BLS_API_KEY = ""
+EIA_API_KEY = ""
+CFTC_APP_TOKEN = ""
+TIINGO_API_KEY = ""
+POLYGON_API_KEY = ""
+ALPHA_VANTAGE_KEY = ""
+FMP_API_KEY = ""
+FINNHUB_API_KEY = ""
+EODHD_API_KEY = ""
+```

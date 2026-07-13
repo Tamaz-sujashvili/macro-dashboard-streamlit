@@ -16,6 +16,7 @@ import streamlit as st
 
 from modules.config import COLORS, apply_house_style, fmt_pct
 from modules.data_fetch import fetch_spy_vix_history
+from modules.breadth import breadth_detector, compute_breadth, fetch_polygon_grouped, load_dma_snapshot, update_breadth_history
 from modules.regime_engine import (
     RegimeSignal,
     compute_consensus,
@@ -51,6 +52,9 @@ _STATE_COLORS = {
     ("MacroQuadrant", "Stagflation"): COLORS["risk_off"],
     ("MacroQuadrant", "Recession"): COLORS["risk_off"],
     ("MacroQuadrant", "Mixed / Uncertain"): COLORS["muted"],
+    ("Breadth", "Broad"): COLORS["risk_on"],
+    ("Breadth", "Narrow"): COLORS["neutral"],
+    ("Breadth", "Deteriorating"): COLORS["risk_off"],
     # Generic
     ("*", "No Data"): COLORS["muted"],
 }
@@ -151,8 +155,36 @@ def get_regime_consensus(
         spy_df = spy_df.copy()
 
     signals = _cached_compute_signals(spy_df, vix_value, term_structure, fred)
+    breadth = update_breadth_history(compute_breadth(fetch_polygon_grouped(), load_dma_snapshot()))
+    signals.append(breadth_detector(breadth))
     consensus = compute_consensus(signals)
     return signals, consensus, spy_df, vix_df
+
+
+def _render_breadth_panel(signals: Sequence[RegimeSignal]) -> None:
+    """Terminal breadth panel. Missing Polygon/DMA data remains non-fatal."""
+    breadth = next((s for s in signals if s.detector_name == "Breadth"), None)
+    st.subheader("BREADTH")
+    if breadth is None or breadth.state == "No Data":
+        st.caption("Polygon breadth awaiting cached close and 200DMA snapshot.")
+        return
+    hist = breadth.history
+    pct = float(hist["pct_above_200"].dropna().iloc[-1]) if "pct_above_200" in hist and hist["pct_above_200"].notna().any() else None
+    ad = float(hist["ad_line"].dropna().iloc[-1]) if "ad_line" in hist and hist["ad_line"].notna().any() else None
+    cols = st.columns(3)
+    cols[0].metric("ADVANCE / DECLINE", f"{ad:+.0f}" if ad is not None else "N/A")
+    cols[1].metric("ABOVE 200DMA", fmt_pct(pct) if pct is not None else "N/A")
+    cols[2].metric("STATE", breadth.state)
+    if not hist.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=hist["date"], y=hist["ad_line"], name="A/D line", line=dict(color=COLORS["accent"])))
+        if pct is not None:
+            fig.add_trace(go.Scatter(x=hist["date"], y=hist["pct_above_200"], name="% > 200DMA", yaxis="y2", line=dict(color=COLORS["risk_on"])))
+            fig.add_hline(y=40, line_dash="dot", line_color=COLORS["risk_off"], yref="y2")
+            fig.add_hline(y=60, line_dash="dot", line_color=COLORS["risk_on"], yref="y2")
+            fig.update_layout(yaxis2=dict(overlaying="y", side="right", range=[0, 100], title="% > 200DMA"))
+        apply_house_style(fig, title="Breadth", height=260)
+        st.plotly_chart(fig, width="stretch", key="chart_regime_breadth")
 
 
 # ---------------------------------------------------------------------------
@@ -406,10 +438,11 @@ def _render_freshness_footer(
     """Show per-source last-updated timestamps and stale warnings."""
     now = datetime.datetime.now()
     spy_ts = spy_df.attrs.get("_fetched_at") if spy_df is not None and hasattr(spy_df, "attrs") else None
+    spy_source = spy_df.attrs.get("source", "yfinance") if spy_df is not None and hasattr(spy_df, "attrs") else "yfinance"
     sources = [
         ("FRED macro data", fred.get("_fetched_at"), 3600),
         ("Yahoo market quotes", mkt.get("_fetched_at"), 900),
-        ("SPY/^VIX history", spy_ts, 3600),
+        (f"SPY history ({spy_source})", spy_ts, 3600),
     ]
 
     rows = []
@@ -466,6 +499,8 @@ def render_regime_monitor(
     _render_consensus_scoreboard(consensus)
     st.divider()
     _render_detector_matrix(signals)
+    st.divider()
+    _render_breadth_panel(signals)
     st.divider()
     _render_detector_history_charts(signals)
     st.divider()

@@ -11,6 +11,7 @@ import io
 import os
 import shutil
 import subprocess
+from urllib.parse import urlencode
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -95,23 +96,59 @@ def _fred_api_key() -> Optional[str]:
     return key or os.environ.get("FRED_API_KEY")
 
 
+def _secret(name: str) -> Optional[str]:
+    """Read a provider credential without ever logging it."""
+    try:
+        value = st.secrets.get(name)
+    except Exception:
+        value = None
+    return value or os.environ.get(name)
+
+
+def _tiingo_daily(ticker: str, period: str) -> Optional[pd.DataFrame]:
+    """Return Tiingo OHLCV in the same shape as yfinance history."""
+    key = _secret("TIINGO_API_KEY")
+    if not key:
+        return None
+    years = 10 if period.endswith("y") else 2
+    start = (datetime.date.today() - datetime.timedelta(days=366 * years)).isoformat()
+    url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices?" + urlencode({"startDate": start, "token": key})
+    try:
+        rows = _http_get_json(url, timeout=20)
+        df = pd.DataFrame(rows)
+        if df.empty or "date" not in df:
+            return None
+        df.index = pd.to_datetime(df.pop("date"), utc=True).tz_convert(None)
+        cols = {"open": "open", "high": "high", "low": "low", "close": "close", "volume": "volume"}
+        df = df.rename(columns=cols)
+        required = [c for c in cols.values() if c in df.columns]
+        if not {"open", "high", "low", "close", "volume"}.issubset(required):
+            return None
+        df = df[["open", "high", "low", "close", "volume"]].apply(pd.to_numeric, errors="coerce").dropna()
+        df.attrs["source"] = "Tiingo"
+        return df if not df.empty else None
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=900)
 def fetch_spy_vix_history(
     period: str = "10y",
     interval: str = "1d",
 ) -> Dict[str, Optional[pd.DataFrame]]:
-    """Fetch daily SPY and ^VIX history via yfinance.
+    """Fetch daily SPY and ^VIX history, falling back to Tiingo for SPY.
 
     Returns a dict with keys ``spy`` and ``vix``.  Any network failure returns
     ``None`` values rather than raising.
     """
+    source = "yfinance"
     try:
         import yfinance as yf
     except Exception:
-        return {"spy": None, "vix": None}
+        yf = None
 
     try:
-        spy = yf.Ticker("SPY").history(period=period, interval=interval, timeout=20)
+        spy = yf.Ticker("SPY").history(period=period, interval=interval, timeout=20) if yf else None
         if spy is not None and not spy.empty:
             spy = spy.rename(columns=str.lower).rename(
                 columns={
@@ -125,14 +162,21 @@ def fetch_spy_vix_history(
     except Exception:
         spy = None
 
+    if spy is None or spy.empty:
+        spy = _tiingo_daily("SPY", period)
+        if spy is not None:
+            source = "Tiingo"
+
     try:
-        vix = yf.Ticker("^VIX").history(period=period, interval=interval, timeout=20)
+        vix = yf.Ticker("^VIX").history(period=period, interval=interval, timeout=20) if yf else None
         if vix is not None and not vix.empty:
             vix = vix[["Close"]].rename(columns={"Close": "close"})
     except Exception:
         vix = None
 
-    return {"spy": spy, "vix": vix}
+    if spy is not None:
+        spy.attrs["source"] = source
+    return {"spy": spy, "vix": vix, "source": source}
 
 
 @st.cache_data(ttl=3600)

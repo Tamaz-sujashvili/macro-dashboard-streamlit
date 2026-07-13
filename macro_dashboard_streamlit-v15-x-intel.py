@@ -40,6 +40,7 @@ import numpy as np
 from modules.regime_ui import render_regime_monitor, get_regime_consensus
 from modules.config import COLORS, apply_house_style, fmt_pct, fmt_bp, fmt_dollar
 from modules.theme import inject_theme, terminal_badge, kpi_tile, style_dataframe
+from modules.calendar_data import fetch_calendar, fetch_finnhub_sentiment
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -202,6 +203,9 @@ CFTC_APP_TOKEN     = get_api_key("CFTC_APP_TOKEN") or ""
 NASDAQ_API_KEY     = get_api_key("NASDAQ_API_KEY") or ""
 CONGRESS_GOV_API_KEY = get_api_key("CONGRESS_GOV_API_KEY") or ""
 FINNHUB_API_KEY    = get_api_key("FINNHUBAPIKEY") or get_api_key("FINNHUB_API_KEY") or ""
+TIINGO_API_KEY     = get_api_key("TIINGO_API_KEY") or ""
+POLYGON_API_KEY    = get_api_key("POLYGON_API_KEY") or ""
+EODHD_API_KEY      = get_api_key("EODHD_API_KEY") or ""
 
 # ── HTTP HELPERS (requests preferred; urllib fallback with SSL fix) ────────────
 try:
@@ -256,6 +260,48 @@ _FRED_ERRORS: dict = {}
 
 def _has_key(value) -> bool:
     return bool(str(value).strip()) if value is not None else False
+
+
+def _mask_key(value: str) -> str:
+    value = str(value or "")
+    return f"{value[:4]}...{value[-4:]}" if len(value) >= 8 else "configured"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def validate_data_keys():
+    """Minimal provider probes; exposes status/latency but never credentials."""
+    providers = [
+        ("FRED", "FRED_API_KEY", FRED_API_KEY, "https://api.stlouisfed.org/fred/series/observations", {"series_id":"GDP", "file_type":"json", "limit":1}),
+        ("BLS", "BLS_API_KEY", BLS_API_KEY, "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000", {}),
+        ("EIA", "EIA_API_KEY", EIA_API_KEY, "https://api.eia.gov/v2/petroleum/pri/spt/data/", {"length":1}),
+        ("CFTC", "CFTC_APP_TOKEN", CFTC_APP_TOKEN, "https://publicreporting.cftc.gov/resource/6dca-aqww.json", {"$limit":1}),
+        ("Tiingo", "TIINGO_API_KEY", TIINGO_API_KEY, "https://api.tiingo.com/tiingo/daily/SPY/prices", {"startDate": (datetime.date.today()-datetime.timedelta(days=3)).isoformat()}),
+        ("Polygon", "POLYGON_API_KEY", POLYGON_API_KEY, "https://api.polygon.io/v2/aggs/ticker/SPY/prev", {"adjusted":"true"}),
+        ("Alpha Vantage", "ALPHA_VANTAGE_KEY", ALPHA_VANTAGE_KEY, "https://www.alphavantage.co/query", {"function":"GLOBAL_QUOTE", "symbol":"SPY"}),
+        ("FMP", "FMP_API_KEY", FMP_API_KEY, "https://financialmodelingprep.com/api/v3/economic_calendar", {"from":str(datetime.date.today()), "to":str(datetime.date.today()+datetime.timedelta(days=1))}),
+        ("Finnhub", "FINNHUB_API_KEY", FINNHUB_API_KEY, "https://finnhub.io/api/v1/quote", {"symbol":"SPY"}),
+        ("EODHD", "EODHD_API_KEY", EODHD_API_KEY, "https://eodhd.com/api/eod/AAPL.US", {"fmt":"json", "limit":1}),
+    ]
+    rows = []
+    for provider, key_name, key, url, params in providers:
+        if not key:
+            rows.append((provider, "NOT CONFIGURED", "—", "—")); continue
+        params = dict(params)
+        if provider == "CFTC":
+            headers = {"X-App-Token": key}
+        else:
+            headers = {}
+            parameter = {"FRED": "api_key", "BLS": "registrationkey", "EIA": "api_key", "Tiingo": "token", "Polygon": "apiKey", "Finnhub": "token", "EODHD": "api_token"}.get(provider, "apikey")
+            params[parameter] = key
+        started = time.perf_counter()
+        try:
+            response = _SESSION.get(url, params=params, headers=headers, timeout=12)
+            latency = f"{(time.perf_counter()-started)*1000:.0f} ms"
+            status = "CONNECTED" if response.status_code == 200 else "RATE LIMITED" if response.status_code == 429 else "INVALID KEY" if response.status_code in {401,403} else f"HTTP {response.status_code}"
+        except Exception:
+            latency, status = "—", "HTTP ERROR"
+        rows.append((provider, status, latency, _mask_key(key)))
+    return pd.DataFrame(rows, columns=["Provider", "Status", "Latency", "Key"])
 
 # ── SERIES / TICKER CONFIG ───────────────────────────────────────────────────
 FRED_SERIES = {
@@ -4649,6 +4695,13 @@ def render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, aaii, news, bl
         diag_df = pd.DataFrame(provider_rows, columns=["Provider", "Records", "Notes"])
         st.dataframe(style_dataframe(diag_df), use_container_width=True, hide_index=True)
 
+        st.markdown("#### DATA KEYS")
+        key_df = validate_data_keys()
+        def _status_style(value):
+            color = COLORS["risk_on"] if value == "CONNECTED" else COLORS["neutral"] if value == "RATE LIMITED" else COLORS["risk_off"] if value == "INVALID KEY" else COLORS["muted"]
+            return f"color:{color};font-weight:600"
+        st.dataframe(style_dataframe(key_df).map(_status_style, subset=["Status"]), use_container_width=True, hide_index=True)
+
         if missing_critical:
             st.warning("Missing critical values: " + ", ".join(missing_critical))
         else:
@@ -4685,6 +4738,29 @@ def render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, aaii, news, bl
             source_audit_rows,
             columns=["Feed", "Current source", "Provenance", "Notes"])
         st.dataframe(style_dataframe(source_audit_df), use_container_width=True, hide_index=True)
+
+
+def render_calendar() -> None:
+    """Terminal calendar panel, backed by FMP with Finnhub economic fallback."""
+    st.subheader("CALENDAR")
+    st.caption("NEXT 14 DAYS · US HIGH-IMPACT ECONOMICS AND MEGACAP EARNINGS")
+    calendar = fetch_calendar()
+    econ, earnings = calendar["economic"], calendar["earnings"]
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### ECONOMIC EVENTS")
+        if econ.empty:
+            st.caption("No economic events returned by configured providers.")
+        else:
+            def _impact_style(value):
+                return f"color:{COLORS['risk_off']};font-weight:600" if str(value).lower() == "high" else f"color:{COLORS['muted']}"
+            st.dataframe(style_dataframe(econ).map(_impact_style, subset=["Impact"]), use_container_width=True, hide_index=True)
+    with right:
+        st.markdown("#### MEGACAP EARNINGS")
+        if earnings.empty:
+            st.caption("No megacap earnings returned by FMP.")
+        else:
+            st.dataframe(style_dataframe(earnings), use_container_width=True, hide_index=True)
 
 
 def has_systemic_data_failure(fred, treasury, mkt, fg, naaim, cape):
@@ -12664,6 +12740,7 @@ def build_sidebar():
             "FLOWS",
             "COMPOSITES",
             "GLOBAL MACRO",
+            "CALENDAR",
             "AI ANALYSIS",
             "X INTEL",
         ]
@@ -12842,6 +12919,7 @@ def main():
         "FLOWS",
         "COMPOSITES",
         "GLOBAL MACRO",
+        "CALENDAR",
         "SENTIMENT",
         "AI ANALYSIS",
         "X INTEL",
@@ -13436,6 +13514,10 @@ def main():
             render_tab_summary("GLOBAL MACRO", fred, treasury=treasury, mkt=mkt, fg=fg, naaim=naaim, cape=cape)
             render_global_macro(fred, mkt)
 
+    if "CALENDAR" in tab_map:
+        with tab_map["CALENDAR"]:
+            render_calendar()
+
     if "SENTIMENT" in tab_map:
         with tab_map["SENTIMENT"]:
             _render_section_refresh(
@@ -13450,6 +13532,15 @@ def main():
                 vrp_data = fetch_vrp_and_realized_vol()
             panic_data = compute_gs_panic_proxy(mkt, opts, skew_idx, pcr_hist)
             render_tab_summary("SENTIMENT", fred, treasury=treasury, mkt=mkt, fg=fg, naaim=naaim, cape=cape)
+            sentiment_tiles = [fetch_finnhub_sentiment(symbol) for symbol in ("SPY", "QQQ")]
+            st.markdown("#### NEWS SENTIMENT")
+            tile_cols = st.columns(2)
+            for col, tile in zip(tile_cols, sentiment_tiles):
+                with col:
+                    if tile and tile.get("bullish") is not None:
+                        kpi_tile(f"{tile['symbol']} BULLISH", f"{float(tile['bullish']) * 100:.0f}%")
+                    else:
+                        kpi_tile("NEWS SENTIMENT", "N/A")
             render_sentiment_framework(
                 mkt, opts, skew_idx, fg, aaii, vix_term,
                 pcr_hist, vrp_data, panic_data

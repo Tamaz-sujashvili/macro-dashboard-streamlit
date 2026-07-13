@@ -1,5 +1,11 @@
 # Changelog — v15 → v16
 
+## Data providers
+
+- Added ignored Streamlit secrets support and a masked Data Keys diagnostics panel with provider status and latency.
+- Added yfinance-to-Tiingo SPY fallback, Polygon daily breadth scaffolding, FMP/Finnhub calendar feeds, and Finnhub SPY/QQQ news-sentiment tiles.
+- Added a sixth, No-Data-safe Breadth detector to the Regime Monitor consensus.
+
 ## Overview
 
 v16 introduces a single authoritative **Regime Monitor** tab, a reusable `modules/` engine/UI split, a consistent dark professional visual identity, and production-hardened fetch/caching. The goal is to remove scattered risk-on/off verdicts and duplicate widgets while making the dashboard more reliable and maintainable.
