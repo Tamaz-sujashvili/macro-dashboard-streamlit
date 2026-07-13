@@ -1,10 +1,20 @@
-.DS_Store
-__pycache__/
-*.pyc
-.venv/
-venv/
-env/
-.env
+# Secrets
+secrets*.toml
 .streamlit/secrets.toml
-dashboard_snapshot.json
-ai_macro_analysis/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.cache/
+.pytest_cache/
+
+# OS files
+.DS_Store
+
+# Virtual environment
+.venv/
+
+# Archive of legacy prototypes and local QA screenshots
+archive/
+orca_review_screenshots/
