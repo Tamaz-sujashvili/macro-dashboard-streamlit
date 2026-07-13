@@ -129,6 +129,35 @@ If the app shows:
 
 - Make sure you installed all requirements (`pip install -r requirements.txt`).
 - Run tests from the project root: `python3 -m pytest tests/ -q`.
+
+## 6. Scheduled regime alerts
+
+The headless runner computes current regime flips and sends new events to a
+private ntfy topic. It does not import Streamlit.
+
+### Local cron
+
+Add the timezone declaration and weekday job to `crontab -e`:
+
+```cron
+CRON_TZ=America/New_York
+30 17 * * 1-5 cd /Users/tazo/Desktop/macro\ dashboard && .venv/bin/python alerts_runner.py >> .cache/alerts_runner.log 2>&1
+```
+
+Set `NTFY_TOPIC` in the environment or in `.streamlit/secrets.toml`. If it is
+unset, the runner prints new alerts to stdout instead of sending them.
+
+### GitHub Actions
+
+The ready-to-paste workflow is committed at `.github/workflows/alerts.yml`.
+It runs at `35 21 * * 1-5` UTC, installs `requirements.txt`, and reads
+`NTFY_TOPIC` from the repository secret named `NTFY_TOPIC`.
+
+### Subscribe
+
+Install the ntfy mobile or desktop app and subscribe to your private topic
+name. Treat the topic name as a secret: anyone who knows it can read the
+alerts.
 # Data provider secrets
 
 Create `.streamlit/secrets.toml` (this file is ignored) with only the keys you use:

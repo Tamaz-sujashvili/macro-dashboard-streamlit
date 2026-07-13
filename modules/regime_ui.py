@@ -20,6 +20,7 @@ import streamlit.components.v1 as components
 from modules.config import COLORS, apply_house_style, fmt_pct
 from modules.data_fetch import fetch_spy_vix_history
 from modules.breadth import breadth_detector, compute_breadth, fetch_polygon_grouped, load_dma_snapshot, update_breadth_history
+from modules.consensus_history import apply_hysteresis, append_flips, build_consensus_history, detect_flips, load_alert_log
 from modules.regime_engine import (
     RegimeSignal,
     compute_consensus,
@@ -29,6 +30,8 @@ from modules.regime_engine import (
     trend_vol_detector,
     vol_regime_detector,
 )
+from modules.playbook import CANONICAL_PLAYBOOK, DEFAULT_TICKERS, conditional_stats, fetch_asset_history
+from modules.theme import style_dataframe, terminal_badge
 
 _GRID_COLOR = "#1e2733"
 
@@ -790,6 +793,119 @@ def _render_timeline_heatmap(signals: Sequence[RegimeSignal]) -> None:
     st.plotly_chart(fig, width="stretch", key="chart_regime_timeline_heatmap")
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _cached_playbook_prices() -> pd.DataFrame:
+    try:
+        return fetch_asset_history(DEFAULT_TICKERS, years=15)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _daily_hysteresis(history: pd.DataFrame, fallback: str = "No Data") -> tuple[pd.Series, str]:
+    if not isinstance(history, pd.DataFrame) or history.empty:
+        return pd.Series(dtype="object"), fallback
+    daily = history[history["timeframe"] == "D"].copy()
+    if daily.empty:
+        return pd.Series(dtype="object"), fallback
+    daily["date"] = pd.to_datetime(daily["date"], errors="coerce")
+    daily["risk_score"] = pd.to_numeric(daily["risk_score"], errors="coerce")
+    daily = daily.dropna(subset=["date", "risk_score"]).sort_values("date").drop_duplicates("date", keep="last")
+    if daily.empty:
+        return pd.Series(dtype="object"), fallback
+    labels = apply_hysteresis(daily.set_index("date")["risk_score"])
+    return labels, str(labels.iloc[-1])
+
+
+def current_daily_hysteresis_label(signals: Sequence[RegimeSignal], fallback: str = "No Data") -> str:
+    try:
+        return _daily_hysteresis(build_consensus_history(signals), fallback)[1]
+    except Exception:
+        return fallback
+
+
+def _render_playbook(signals: Sequence[RegimeSignal], consensus: Mapping[str, Mapping[str, Any]]) -> None:
+    st.subheader("PLAYBOOK")
+    prices = _cached_playbook_prices()
+    if prices.empty:
+        st.caption("PLAYBOOK DATA UNAVAILABLE")
+        return
+    history = build_consensus_history(signals)
+    daily, current_daily = _daily_hysteresis(history, str((consensus.get("D") or {}).get("label", "No Data")))
+    macro = next((signal for signal in signals if signal.detector_name == "MacroQuadrant"), None)
+    macro_history = macro.history.copy() if macro is not None and isinstance(macro.history, pd.DataFrame) else pd.DataFrame()
+    if not macro_history.empty and {"date", "state"}.issubset(macro_history.columns):
+        macro_series = macro_history.set_index(pd.to_datetime(macro_history["date"], errors="coerce"))["state"].dropna().astype(str)
+        current_macro = str(macro_series.iloc[-1]) if not macro_series.empty else "No Data"
+    else:
+        macro_series, current_macro = pd.Series(dtype="object"), str(getattr(macro, "state", "No Data"))
+    terminal_badge(f"DAILY CONSENSUS · {current_daily}", "success" if current_daily == "Risk-On" else "error" if current_daily == "Risk-Off" else "warning")
+    terminal_badge(f"MACROQUADRANT · {current_macro}", "info")
+    st.caption("HISTORICAL CONDITIONAL PERFORMANCE - DESCRIPTIVE, NOT INVESTMENT ADVICE. NEXT-DAY RETURNS, REGIME KNOWN AT PRIOR CLOSE.")
+    for title, series, current, key in (("EMPIRICAL — BY CONSENSUS REGIME", daily, current_daily, "playbook_consensus"), ("EMPIRICAL — BY MACRO QUADRANT", macro_series, current_macro, "playbook_macro")):
+        stats = conditional_stats(series, prices) if not series.empty else pd.DataFrame()
+        choices = [current] + [item for item in sorted(stats["regime_label"].unique()) if item != current] if not stats.empty else [current]
+        selected = st.selectbox(f"VIEW {title}", choices, key=key)
+        st.markdown(f"**{title}**")
+        subset = stats[stats["regime_label"] == selected].set_index("asset") if not stats.empty else pd.DataFrame()
+        if subset.empty:
+            st.caption("EMPIRICAL CONDITIONAL PERFORMANCE UNAVAILABLE")
+            continue
+        display = subset[["ann_return", "ann_vol", "sharpe", "hit_rate", "max_drawdown", "n_days"]].copy()
+        display[["ann_return", "ann_vol", "hit_rate", "max_drawdown"]] *= 100
+        display.columns = ["ANN. RETURN", "ANN. VOL", "SHARPE", "HIT RATE", "MAX DD", "N"]
+        low_sample = subset["low_sample"].to_dict()
+        styled = style_dataframe(display).format({"ANN. RETURN": "{:+.2f}%", "ANN. VOL": "{:.2f}%", "SHARPE": "{:+.2f}", "HIT RATE": "{:.1f}%", "MAX DD": "{:.2f}%", "N": "{:.0f}"})
+        styled = styled.apply(lambda row: ["color:#8b98a9;background-color:#0a0e14;"] * len(row) if low_sample.get(row.name) else [""] * len(row), axis=1)
+        st.dataframe(styled, width="stretch", hide_index=False)
+    st.markdown("**CANONICAL**")
+    st.caption("TEXTBOOK PRIOR — NOT FITTED DATA")
+    st.write(CANONICAL_PLAYBOOK.get(current_daily, "No textbook prior is defined for this state."))
+    st.write(CANONICAL_PLAYBOOK.get(current_macro, "No textbook prior is defined for this state."))
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _recent_flips(signals: Sequence[RegimeSignal]) -> List[Any]:
+    history = build_consensus_history(signals)
+    if history.empty:
+        return []
+    cutoff = pd.to_datetime(history["date"], errors="coerce").max() - pd.Timedelta(days=30)
+    return [event for event in detect_flips(history) if pd.Timestamp(event.date) >= cutoff]
+
+
+def _trading_days_since(date: Any) -> int:
+    return max(0, len(pd.bdate_range(start=pd.Timestamp(date).date(), end=pd.Timestamp.today().date())) - 1)
+
+
+def latest_daily_flip_is_recent(signals: Sequence[RegimeSignal], trading_days: int = 2) -> bool:
+    events = [event for event in _recent_flips(signals) if event.detector is None and event.timeframe == "D"]
+    return bool(events) and _trading_days_since(max(events, key=lambda event: event.date).date) <= trading_days
+
+
+def render_recent_flip_banner(signals: Sequence[RegimeSignal]) -> None:
+    events = [event for event in _recent_flips(signals) if event.detector is None and event.timeframe == "D"]
+    if not events:
+        return
+    event = max(events, key=lambda item: item.date)
+    if _trading_days_since(event.date) > 5:
+        return
+    color = COLORS["risk_on"] if event.to_label == "Risk-On" else COLORS["risk_off"] if event.to_label == "Risk-Off" else COLORS["neutral"]
+    st.markdown(f'<div style="background:{COLORS["panel"]};border:1px solid {COLORS["border"]};border-left:2px solid {color};padding:10px 14px;font:600 12px JetBrains Mono,monospace">CONSENSUS FLIP - DAILY: {event.from_label.upper()} → {event.to_label.upper()} ({event.date}, score {event.risk_score:+.2f})</div>', unsafe_allow_html=True)
+
+
+def _render_alert_log(signals: Sequence[RegimeSignal]) -> None:
+    events = _recent_flips(signals)
+    if events:
+        append_flips(events)
+    log = load_alert_log().tail(20).sort_values("date", ascending=False)
+    st.subheader("ALERT LOG")
+    if log.empty:
+        st.caption("ALERT LOG EMPTY")
+        return
+    log["TIMEFRAME / DETECTOR"] = log.apply(lambda row: f"{row.timeframe} / {row.detector if pd.notna(row.detector) else 'CONSENSUS'}", axis=1)
+    log["FROM → TO"] = log["from_label"].astype(str) + " → " + log["to_label"].astype(str)
+    st.dataframe(style_dataframe(log[["date", "TIMEFRAME / DETECTOR", "FROM → TO", "risk_score"]]).format({"risk_score": "{:+.2f}"}), width="stretch", hide_index=True)
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -872,6 +988,10 @@ def render_regime_monitor(
     st.divider()
     _render_detector_lightweight_charts(signals)
     st.divider()
+    _render_playbook(signals, consensus)
+    st.divider()
     _render_timeline_heatmap(signals)
     st.divider()
     _render_freshness_footer(fred, mkt, spy_df)
+    st.divider()
+    _render_alert_log(signals)

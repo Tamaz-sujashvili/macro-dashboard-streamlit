@@ -116,3 +116,12 @@ v16 introduces a single authoritative **Regime Monitor** tab, a reusable `module
   - Grep for emoji unicode ranges outside `archive/` returned **0 matches** after cleaning `app.py` and remaining markdown docs.
   - Playwright final pass: all 19 tabs PASS with dark `#0a0e14` background, `#11161f` panels, cyan accent, JetBrains Mono numerals, uppercase terminal tab nav, no default Streamlit red/orange chrome, and no white chart backgrounds. CALENDAR and the Regime Monitor BREADTH panel passed QA.
   - `pytest tests/ -q` → **32 passed**.
+
+## v18 — Regime flip alerts
+
+- Added the in-app Regime Monitor flip banner, two-day `FLIPPED` header marker,
+  and terminal-styled alert-log table backed by `.cache/alert_log.parquet`.
+- Added the Streamlit-free `alerts_runner.py` with ntfy.sh delivery, stdout
+  fallback, alert-log deduplication, and cron/GitHub Actions documentation.
+- Added headless market/FRED inputs and tests for new, duplicate, and failed
+  alert-runner paths.
