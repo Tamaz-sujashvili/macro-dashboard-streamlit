@@ -268,21 +268,74 @@ def _render_detector_matrix(signals: Sequence[RegimeSignal]) -> None:
     st.plotly_chart(fig, width="stretch", key="chart_regime_detector_matrix")
 
 
-def _render_detector_expanders(signals: Sequence[RegimeSignal]) -> None:
-    """Show per-detector metrics inside expanders.
+def _render_detector_history_charts(signals: Sequence[RegimeSignal]) -> None:
+    """Render each detector's historical risk score as a standalone chart.
 
-    Detail charts were removed because rendering Plotly figures inside
-    expanders caused subsequent Streamlit tabs to render blank panels.
-    The Regime Monitor tab still provides the matrix, scoreboard, and
-    (when enabled) timeline heatmap visualizations.
+    These charts deliberately live outside expanders.  Streamlit had a
+    rendering bug where Plotly figures nested inside expanders could leave
+    later tabs blank after a rerun.
     """
-    st.subheader("Detector Detail")
+    st.subheader("Detector History")
+    chartable: List[tuple[RegimeSignal, pd.DataFrame]] = []
+
     for sig in signals:
-        with st.expander(f"{sig.detector_name} ({sig.timeframe}) — {sig.state}"):
-            m1, m2, m3 = st.columns(3)
-            m1.metric("State", sig.state)
-            m2.metric("Risk score", f"{sig.risk_score:+.2f}")
-            m3.metric("Confidence", fmt_pct(sig.confidence * 100, 0))
+        history = sig.history.copy()
+        if history.empty or not {"date", "risk_score"}.issubset(history.columns):
+            continue
+        history["date"] = pd.to_datetime(history["date"], errors="coerce")
+        history["risk_score"] = pd.to_numeric(history["risk_score"], errors="coerce")
+        history = history.dropna(subset=["date", "risk_score"]).sort_values("date")
+        if not history.empty:
+            chartable.append((sig, history))
+
+    if not chartable:
+        st.info("Historical detector series are not available yet.")
+        return
+
+    for sig, history in chartable:
+        fig = go.Figure()
+        hover_state = history["state"].astype(str) if "state" in history else None
+        fig.add_trace(
+            go.Scatter(
+                x=history["date"],
+                y=history["risk_score"],
+                mode="lines",
+                name="Risk score",
+                line=dict(color=sig.color or _score_color(sig.risk_score), width=2),
+                customdata=hover_state,
+                hovertemplate=(
+                    "%{x|%Y-%m-%d}<br>Risk score: %{y:.2f}<br>State: %{customdata}<extra></extra>"
+                    if hover_state is not None
+                    else "%{x|%Y-%m-%d}<br>Risk score: %{y:.2f}<extra></extra>"
+                ),
+            )
+        )
+        fig.add_hline(y=0, line_color=_GRID_COLOR, line_dash="dot", line_width=1)
+        fig.add_hline(y=0.3, line_color=_rgba(COLORS["risk_on"], 0.45), line_dash="dot", line_width=1)
+        fig.add_hline(y=-0.3, line_color=_rgba(COLORS["risk_off"], 0.45), line_dash="dot", line_width=1)
+        apply_house_style(fig, title=f"{sig.detector_name} · {sig.timeframe} risk score", height=260)
+        fig.update_layout(
+            yaxis=dict(range=[-1.05, 1.05], title="Risk score"),
+            xaxis=dict(title=None),
+            showlegend=False,
+            margin=dict(l=48, r=18, t=42, b=38),
+        )
+        chart_key = f"chart_regime_history_{sig.detector_name.lower()}_{sig.timeframe.lower()}"
+        st.plotly_chart(fig, width="stretch", key=chart_key)
+
+    # Detectors without a historical series still get a visible current read.
+    history_names = {(sig.detector_name, sig.timeframe) for sig, _ in chartable}
+    no_history = [sig for sig in signals if (sig.detector_name, sig.timeframe) not in history_names]
+    if no_history:
+        st.caption("Current-only detectors")
+        cols = st.columns(min(3, len(no_history)))
+        for col, sig in zip(cols * ((len(no_history) + len(cols) - 1) // len(cols)), no_history):
+            with col:
+                st.metric(
+                    f"{sig.detector_name} · {sig.timeframe}",
+                    sig.state,
+                    f"score {sig.risk_score:+.2f} · confidence {sig.confidence:.0%}",
+                )
 
 
 def _render_timeline_heatmap(signals: Sequence[RegimeSignal]) -> None:
@@ -414,8 +467,8 @@ def render_regime_monitor(
     st.divider()
     _render_detector_matrix(signals)
     st.divider()
-    _render_detector_expanders(signals)
+    _render_detector_history_charts(signals)
     st.divider()
-    # _render_timeline_heatmap(signals)
-    # st.divider()
+    _render_timeline_heatmap(signals)
+    st.divider()
     _render_freshness_footer(fred, mkt, spy_df)
