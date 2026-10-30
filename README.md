@@ -4,7 +4,7 @@ Most dashboards show prices. This one helps you see what regime you are in and w
 
 I built this Streamlit dashboard for top-down macro work. It brings growth, inflation, liquidity, positioning, options and cross-asset data into one place, then compares several regime detectors. It is a research tool: it does not pick securities or turn a regime label into portfolio weights.
 
-[Try the demo](https://macro-dashboard-app-7ju3ucvwbeihu75sjkeryf.streamlit.app/) | [Read the setup guide](SETUP.md) | [Original post](https://x.com/suja_Labarum/status/2062536311144149122)
+[Try the demo](https://macro.quantalphalabs.io/) | [Read the setup guide](SETUP.md) | [Original post](https://x.com/suja_Labarum/status/2062536311144149122)
 
 ## How I use it
 
