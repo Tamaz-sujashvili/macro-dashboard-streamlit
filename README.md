@@ -59,10 +59,11 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 Start with a [free FRED API key](https://fred.stlouisfed.org/docs/api/api_key.html). It is needed for many of the macro series. Other keys are optional and depend on the panels you use. You can also set keys as environment variables. Keep `.streamlit/secrets.toml` private and do not commit it.
 
 ```bash
+export MACRO_DASHBOARD_MODE=local
 streamlit run app.py
 ```
 
-Open [http://localhost:8501](http://localhost:8501). If a panel is empty, check the provider diagnostics, your keys and network access. The first load can take time while the app fetches data.
+Open [http://localhost:8501](http://localhost:8501). Local mode enables personal features and should only be used on a trusted, private machine. The default public mode reads server-side keys without displaying them and disables local-only tools. If a panel is empty, check the provider diagnostics, your keys and network access. The first load can take time while the app fetches data.
 
 ## Data sources
 

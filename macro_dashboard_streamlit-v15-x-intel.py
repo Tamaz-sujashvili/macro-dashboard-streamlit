@@ -31,6 +31,9 @@ import urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+# Public is the safe default; local-only features require an explicit opt-in.
+PUBLIC_DEMO = os.environ.get("MACRO_DASHBOARD_MODE", "public").strip().lower() != "local"
+
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
@@ -264,7 +267,7 @@ def _has_key(value) -> bool:
 
 def _mask_key(value: str) -> str:
     value = str(value or "")
-    return f"{value[:4]}...{value[-4:]}" if len(value) >= 8 else "configured"
+    return "configured"
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -571,7 +574,7 @@ def fetch_fred():
                         time.sleep(0.35 * attempt)
 
             if record_error:
-                _FRED_ERRORS[series_id] = f"FREDGraph {type(last_error).__name__}: {last_error}"
+                _FRED_ERRORS[series_id] = f"FREDGraph {type(last_error).__name__}"
             return []
 
         def _fred_req(series_id, units="lin", limit=5, record_error=True):
@@ -607,7 +610,7 @@ def fetch_fred():
                     time.sleep(0.35 * attempt)
 
             if last_error is not None and record_error:
-                _FRED_ERRORS[series_id] = f"{type(last_error).__name__}: {last_error}"
+                _FRED_ERRORS[series_id] = type(last_error).__name__
 
             # Fallback that doesn't require an API key
             return _fredgraph_req(series_id, units=units, limit=limit, record_error=record_error)
@@ -4713,7 +4716,7 @@ def render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, aaii, news, bl
         else:
             st.success("All core dashboard data points loaded.")
 
-        if _FRED_ERRORS:
+        if _FRED_ERRORS and not PUBLIC_DEMO:
             fred_errs = pd.DataFrame(
                 [{"Series": sid, "Error": err} for sid, err in sorted(_FRED_ERRORS.items())[:12]]
             )
@@ -10856,6 +10859,8 @@ def fetch_singlestock_vs_index_vol_spread():
         return None
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_x_intelligence():
+    if PUBLIC_DEMO:
+        return None
     try:
         base_dir = Path.home() / ".macro_dashboard"
         analyzed_path = base_dir / "x_intel_analyzed.json"
@@ -12129,6 +12134,8 @@ def _codex_cli_path():
 
 
 def _run_codex_macro_analysis_subprocess(snapshot, snapshot_path):
+    if PUBLIC_DEMO:
+        raise PermissionError("Local analysis is disabled in public mode")
     _ensure_ai_analysis_dir()
     timestamp = _safe_timestamp()
     raw_output_path = os.path.join(_ai_analysis_dir(), f"ai_macro_cli_raw_{timestamp}.json")
@@ -12422,6 +12429,8 @@ def _compose_ai_full_report(snapshot):
 
 
 def render_ai_macro_analysis():
+    if PUBLIC_DEMO:
+        return
     st.subheader("AI ANALYSIS")
     st.caption(
         "Use the latest exported snapshot and run a local Codex CLI analyst pass. The generated output starts with plain English and then goes into a professional macro read."
@@ -12679,6 +12688,8 @@ def _clear_cached_functions(*funcs):
 
 
 def _render_section_refresh(section_key, clear_funcs):
+    if PUBLIC_DEMO:
+        return
     refresh_col, info_col = st.columns([1.1, 5.9])
     with refresh_col:
         if st.button("Refresh section", key=f"refresh_{section_key}", use_container_width=True):
@@ -12717,19 +12728,22 @@ def build_sidebar():
             "How many days to measure trend momentum",
             min_value=20, max_value=120, value=60, step=1)
         st.session_state["regime_roc_lookback_days"] = regime_lookback_days
-        st.sidebar.markdown("### ENERGY FUTURES")
-        live_fetch_toggle = st.sidebar.toggle(
-            "Live fetch from Barchart",
-            value=st.session_state.get("energy_live_fetch", False),
-            help="Downloads WTI synthetic-spreads CSV from Barchart (15-min cache).")
-        st.session_state["energy_live_fetch"] = live_fetch_toggle
-        futures_csv = st.sidebar.file_uploader(
-            "Upload futures spreads CSV (overrides live fetch)",
-            type="csv", key="futures_csv")
-        if live_fetch_toggle and futures_csv is None:
-            st.sidebar.caption("Live Barchart fetch active - 15-min cache.")
-        elif futures_csv is not None:
-            st.sidebar.caption("Manual CSV upload is active.")
+        if PUBLIC_DEMO:
+            futures_csv = None
+        else:
+            st.sidebar.markdown("### ENERGY FUTURES")
+            live_fetch_toggle = st.sidebar.toggle(
+                "Live fetch from Barchart",
+                value=st.session_state.get("energy_live_fetch", False),
+                help="Downloads WTI synthetic-spreads CSV from Barchart (15-min cache).")
+            st.session_state["energy_live_fetch"] = live_fetch_toggle
+            futures_csv = st.sidebar.file_uploader(
+                "Upload futures spreads CSV (overrides live fetch)",
+                type="csv", key="futures_csv")
+            if live_fetch_toggle and futures_csv is None:
+                st.sidebar.caption("Live Barchart fetch active - 15-min cache.")
+            elif futures_csv is not None:
+                st.sidebar.caption("Manual CSV upload is active.")
 
         all_sections = [
             "REGIME MONITOR",
@@ -12751,6 +12765,8 @@ def build_sidebar():
             "AI ANALYSIS",
             "X INTEL",
         ]
+        if PUBLIC_DEMO:
+            all_sections = [section for section in all_sections if section not in {"AI ANALYSIS", "X INTEL"}]
         visible_sections = st.multiselect(
             "Show / hide tabs",
             options=all_sections,
@@ -12759,61 +12775,49 @@ def build_sidebar():
 
         st.divider()
 
-        # API keys input panel
-        with st.expander("API Keys"):
-            st.caption("Enter your API keys below. Leave blank to use secrets or environment variables.")
-            fred_inp   = st.text_input("FRED API Key", value=FRED_API_KEY or "", type="password")
-            alpha_inp  = st.text_input("Alpha Vantage Key", value=ALPHA_VANTAGE_KEY or "", type="password")
-            bls_inp    = st.text_input("BLS API Key", value=BLS_API_KEY or "", type="password")
-            eia_inp    = st.text_input("EIA API Key", value=EIA_API_KEY or "", type="password")
-            fmp_inp    = st.text_input("FMP API Key", value=FMP_API_KEY or "", type="password")
-            cftc_inp   = st.text_input("CFTC App Token", value=CFTC_APP_TOKEN or "", type="password")
-            nasdaq_inp = st.text_input("NASDAQ API Key", value=NASDAQ_API_KEY or "", type="password")
-            finnhub_inp = st.text_input("Finnhub API Key (13F data)", value=FINNHUB_API_KEY or "", type="password")
-            if st.button("Apply API Keys"):
-                # Update session_state so get_api_key() picks up overrides
-                keys_map = {
-                    "FRED_API_KEY": fred_inp.strip(),
-                    "ALPHA_VANTAGE_KEY": alpha_inp.strip(),
-                    "BLS_API_KEY": bls_inp.strip(),
-                    "EIA_API_KEY": eia_inp.strip(),
-                    "FMP_API_KEY": fmp_inp.strip(),
-                    "CFTC_APP_TOKEN": cftc_inp.strip(),
-                    "NASDAQ_API_KEY": nasdaq_inp.strip(),
-                    "FINNHUBAPIKEY": finnhub_inp.strip(),
-                }
-                for k, v in keys_map.items():
-                    if v:
-                        st.session_state[k] = v
-                # Clear cached data and rerun to pick up new keys
+        if not PUBLIC_DEMO:
+            # API keys input panel
+            with st.expander("API Keys"):
+                st.caption("Enter your API keys below. Leave blank to use secrets or environment variables.")
+                fred_inp   = st.text_input("FRED API Key", value="", type="password")
+                alpha_inp  = st.text_input("Alpha Vantage Key", value="", type="password")
+                bls_inp    = st.text_input("BLS API Key", value="", type="password")
+                eia_inp    = st.text_input("EIA API Key", value="", type="password")
+                fmp_inp    = st.text_input("FMP API Key", value="", type="password")
+                cftc_inp   = st.text_input("CFTC App Token", value="", type="password")
+                nasdaq_inp = st.text_input("NASDAQ API Key", value="", type="password")
+                finnhub_inp = st.text_input("Finnhub API Key (13F data)", value="", type="password")
+                if st.button("Apply API Keys"):
+                    # Update session_state so get_api_key() picks up overrides
+                    keys_map = {
+                        "FRED_API_KEY": fred_inp.strip(),
+                        "ALPHA_VANTAGE_KEY": alpha_inp.strip(),
+                        "BLS_API_KEY": bls_inp.strip(),
+                        "EIA_API_KEY": eia_inp.strip(),
+                        "FMP_API_KEY": fmp_inp.strip(),
+                        "CFTC_APP_TOKEN": cftc_inp.strip(),
+                        "NASDAQ_API_KEY": nasdaq_inp.strip(),
+                        "FINNHUBAPIKEY": finnhub_inp.strip(),
+                    }
+                    for k, v in keys_map.items():
+                        if v:
+                            st.session_state[k] = v
+                    # Clear cached data and rerun to pick up new keys
+                    st.cache_data.clear()
+                    st.rerun()
+
+            if st.button("Force Refresh", use_container_width=True):
                 st.cache_data.clear()
                 st.rerun()
-
-        if st.button("Force Refresh", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
 
         st.caption(f"Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M UTC')}")
 
     return lookback, regime_lookback_days, visible_sections, futures_csv
 
 
-# ── MAIN APP ──────────────────────────────────────────────────────────────────
-def main():
-    lookback, regime_lookback_days, visible_sections, futures_csv = build_sidebar()
-
-    with st.status("Loading core dashboard data…", expanded=False) as status:
-        fred = fetch_fred()
-        treasury = fetch_treasury()
-        mkt = fetch_market()
-        fg = fetch_fear_greed()
-        naaim = fetch_naaim()
-        cape = fetch_shiller_cape()
-        # Compute regime consensus once here so the header and Regime Monitor tab
-        # never block the rest of the UI re-running detectors.
-        regime_precomputed = get_regime_consensus(fred, mkt)
-        status.update(label="Core dashboard ready", state="complete", expanded=False)
-
+def _load_futures_curve(futures_csv):
+    if PUBLIC_DEMO:
+        return pd.DataFrame()
     futures_curve = pd.DataFrame()
     live_fetch = st.session_state.get("energy_live_fetch", False)
     if futures_csv is not None:
@@ -12836,6 +12840,26 @@ def main():
                 break
 
 
+    return futures_curve
+
+
+# ── MAIN APP ──────────────────────────────────────────────────────────────────
+def main():
+    lookback, regime_lookback_days, visible_sections, futures_csv = build_sidebar()
+
+    with st.status("Loading core dashboard data…", expanded=False) as status:
+        fred = fetch_fred()
+        treasury = fetch_treasury()
+        mkt = fetch_market()
+        fg = fetch_fear_greed()
+        naaim = fetch_naaim()
+        cape = fetch_shiller_cape()
+        # Compute regime consensus once here so the header and Regime Monitor tab
+        # never block the rest of the UI re-running detectors.
+        regime_precomputed = get_regime_consensus(fred, mkt)
+        status.update(label="Core dashboard ready", state="complete", expanded=False)
+
+    futures_curve = _load_futures_curve(futures_csv)
     render_data_diagnostics(fred, treasury, mkt, fg, naaim, cape, None, [], None)
     if has_systemic_data_failure(fred, treasury, mkt, fg, naaim, cape):
         st.error(
@@ -13553,12 +13577,12 @@ def main():
                 pcr_hist, vrp_data, panic_data
             )
 
-    if "AI ANALYSIS" in tab_map:
+    if not PUBLIC_DEMO and "AI ANALYSIS" in tab_map:
         with tab_map["AI ANALYSIS"]:
             render_tab_summary("AI ANALYSIS", fred, treasury=treasury, mkt=mkt, fg=fg, naaim=naaim, cape=cape)
             render_ai_macro_analysis()
 
-    if "X INTEL" in tab_map:
+    if not PUBLIC_DEMO and "X INTEL" in tab_map:
         with tab_map["X INTEL"]:
             _render_section_refresh("x_intelligence", [fetch_x_intelligence])
             with st.spinner("Loading X intelligence…"):
@@ -13568,7 +13592,7 @@ def main():
     # ── DOWNLOAD BUTTON ──────────────────────────────────────────────────────
     st.divider()
     st.caption("Offline dashboard generation is on-demand so normal reruns do not wait for every downstream feed.")
-    if st.button("Prepare Full Offline Dashboard (HTML)", key="prepare_html_report"):
+    if not PUBLIC_DEMO and st.button("Prepare Full Offline Dashboard (HTML)", key="prepare_html_report"):
         with st.status("Preparing offline dashboard…", expanded=True) as status:
             status.write("Loading all section-specific data for the offline file…")
             report_premarket = fetch_premarket_snapshot()

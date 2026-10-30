@@ -71,7 +71,10 @@ streamlit run macro_dashboard_streamlit-v15-x-intel.py
 
 ## 3. Run
 
+For personal use on a trusted machine, enable local mode. Public mode is the default and disables local-only tools and the API-key input panel. Keep provider keys in a server-side secrets file or environment variables, never in the repository.
+
 ```bash
+export MACRO_DASHBOARD_MODE=local
 streamlit run macro_dashboard_streamlit-v15-x-intel.py
 ```
 
